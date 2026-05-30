@@ -5,5 +5,5 @@ select
     status,
     amount/100.0 as amount,
     created as created_at
-from `dbt-tutorial.stripe.payment`
+from {{ source('stripe', 'payment') }}
 
