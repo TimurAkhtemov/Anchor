@@ -5,4 +5,18 @@ sources:
     database: dbt-tutorial
     tables:
       - name: customers
+        columns:
+          - name: id # field name needs to match what's in the source (not customer_id)
+            data_tests:
+              - unique
+              - not_null
       - name: orders
+        config:
+          freshness: # source freshness (ran by dbt source freshness, NOT dbt test)
+            warn_after:
+              count: 24
+              period: hour
+            error_after:
+              count: 48
+              period: hour
+          loaded_at_field: _etl_loaded_at

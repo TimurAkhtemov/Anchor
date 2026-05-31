@@ -29,6 +29,15 @@ This document summarizes the dbt concepts, workflows, and debugging solutions co
 * **Root Cause**: Defining the same schema/table structure in two different YAML files (e.g., trying to test by adding `stripe` to `_src_jaffle_shop.yml` when it already exists in `_src_stripe.yml`).
 * **Resolution**: Reorganize your YAML configurations so each source name lives in exactly one file (e.g., jaffle shop tables in `_src_jaffle_shop.yml` and stripe tables in `_src_stripe.yml`).
 
+### Issue D: Source Not Found / JinjaError
+* **Symptom**: `JinjaError (dbt1501): Failed to render SQL not a key type: Source not found for source name: stripe, table name: payments`
+* **Root Cause**: The name specified in the `{{ source(...) }}` macro must **exactly match** the table name defined in your `_src_*.yml` source configuration.
+  * In this project, the BigQuery table name is singular (`payment`), but your model was initially referencing the plural `payments`: `{{ source('stripe', 'payments') }}`.
+* **Resolution**: Update the staging model SQL to use the exact singular name:
+  ```sql
+  select * from {{ source('stripe', 'payment') }}
+  ```
+
 ---
 
 ## 2. Core dbt Concepts
