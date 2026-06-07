@@ -1,0 +1,21 @@
+version: 2
+
+models:
+  - name: stg_stripe__payments
+    description: Staging model for payments data from Stripe.
+    columns:
+      - name: payment_id
+        description: Primary key for payments.
+        data_tests:
+          - unique
+          - not_null
+      - name: order_id
+        description: Foreign key referencing the order.
+      - name: payment_method
+        description: "{{ doc('payment_method') }}"
+      - name: status
+        description: The current status of the payment.
+      - name: amount
+        description: Total transaction amount in dollars.
+      - name: created_at
+        description: Timestamp when the payment was created.

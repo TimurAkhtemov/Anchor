@@ -2,11 +2,14 @@ version: 2
 
 sources:
   - name: jaffle_shop
+    description: Source of truth for orders, customers, and payments data, clone of Postgres database
     database: dbt-tutorial
     tables:
       - name: customers
+        description: Raw customers data
         columns:
           - name: id # field name needs to match what's in the source (not customer_id)
+            description: Primary key for the customer
             data_tests:
               - unique
               - not_null
