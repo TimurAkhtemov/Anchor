@@ -1,0 +1,16 @@
+{
+  "customLocalFormatters.formatters": [
+    {
+      "command": "/Users/timurakhtemov/Desktop/Programming/Personal/Anchor/venv/bin/sqlfmt - -q",
+      "languages": ["sql", "jinja-sql"]
+    }
+  ],
+  "[sql]": {
+    "editor.defaultFormatter": "jkillian.custom-local-formatters",
+    "editor.formatOnSave": true
+  },
+  "[jinja-sql]": {
+    "editor.defaultFormatter": "jkillian.custom-local-formatters",
+    "editor.formatOnSave": true
+  }
+}
