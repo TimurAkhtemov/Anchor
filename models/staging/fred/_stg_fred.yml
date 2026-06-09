@@ -6,7 +6,7 @@ models:
     columns:
       - name: series_id
         description: Primary key for the series (e.g., GDP, CPIAUCSL).
-        tests:
+        data_tests:
           - unique
           - not_null
       - name: series_title
@@ -27,7 +27,7 @@ models:
     columns:
       - name: series_id
         description: Foreign key reference to stg_fred__series.
-        tests:
+        data_tests:
           - not_null
           - relationships:
               arguments:
@@ -35,7 +35,7 @@ models:
                 field: series_id
       - name: observation_date
         description: Date of the economic observation.
-        tests:
+        data_tests:
           - not_null
       - name: observation_value
         description: Floating point numeric value of the metric on this date. Can be null if data was missing or not yet populated.

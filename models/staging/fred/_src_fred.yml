@@ -10,7 +10,7 @@ sources:
         columns:
           - name: series_id
             description: Unique identifier for the series.
-            tests:
+            data_tests:
               - unique
               - not_null
       - name: raw_fred_observations
@@ -18,9 +18,9 @@ sources:
         columns:
           - name: series_id
             description: Unique identifier for the series.
-            tests:
+            data_tests:
               - not_null
           - name: date
             description: Date of the observation.
-            tests:
+            data_tests:
               - not_null

@@ -6,7 +6,7 @@ models:
     columns:
       - name: ticker
         description: Unique stock ticker symbol (e.g. AAPL, SPY).
-        tests:
+        data_tests:
           - unique
           - not_null
       - name: company_name
@@ -27,7 +27,7 @@ models:
     columns:
       - name: ticker
         description: Stock ticker symbol.
-        tests:
+        data_tests:
           - not_null
           - relationships:
               arguments:
@@ -35,7 +35,7 @@ models:
                 field: ticker
       - name: trading_date
         description: Date of the daily price bar.
-        tests:
+        data_tests:
           - not_null
       - name: open_price
         description: Opening price on the date.

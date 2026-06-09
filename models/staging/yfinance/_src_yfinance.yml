@@ -10,7 +10,7 @@ sources:
         columns:
           - name: ticker
             description: Unique ticker symbol (e.g. AAPL, SPY).
-            tests:
+            data_tests:
               - unique
               - not_null
       - name: raw_yfinance_prices
@@ -18,9 +18,9 @@ sources:
         columns:
           - name: ticker
             description: Ticker symbol.
-            tests:
+            data_tests:
               - not_null
           - name: date
             description: Trading date.
-            tests:
+            data_tests:
               - not_null
