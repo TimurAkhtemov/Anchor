@@ -1,0 +1,26 @@
+version: 2
+
+sources:
+  - name: yfinance
+    database: anchor-495115
+    schema: raw_yfinance
+    tables:
+      - name: raw_yfinance_tickers
+        description: Metadata for stock tickers ingested from yfinance.
+        columns:
+          - name: ticker
+            description: Unique ticker symbol (e.g. AAPL, SPY).
+            tests:
+              - unique
+              - not_null
+      - name: raw_yfinance_prices
+        description: Daily historical price data ingested from yfinance.
+        columns:
+          - name: ticker
+            description: Ticker symbol.
+            tests:
+              - not_null
+          - name: date
+            description: Trading date.
+            tests:
+              - not_null

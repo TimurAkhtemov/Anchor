@@ -1,0 +1,43 @@
+version: 2
+
+models:
+  - name: stg_fred__series
+    description: Staged metadata for FRED macroeconomic series.
+    columns:
+      - name: series_id
+        description: Primary key for the series (e.g., GDP, CPIAUCSL).
+        tests:
+          - unique
+          - not_null
+      - name: series_title
+        description: Human-readable name of the series.
+      - name: reporting_frequency
+        description: Frequency of reporting (e.g., Monthly, Quarterly).
+      - name: unit_of_measure
+        description: Metric units (e.g., Billions of Dollars, Percent).
+      - name: seasonal_adjustment
+        description: Type of seasonal adjustment.
+      - name: fred_last_updated_at
+        description: Timestamp when the series was last updated on FRED.
+      - name: raw_ingested_at
+        description: Timestamp when this record was loaded into the raw dataset.
+
+  - name: stg_fred__observations
+    description: Staged historical time-series observations.
+    columns:
+      - name: series_id
+        description: Foreign key reference to stg_fred__series.
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_fred__series')
+                field: series_id
+      - name: observation_date
+        description: Date of the economic observation.
+        tests:
+          - not_null
+      - name: observation_value
+        description: Floating point numeric value of the metric on this date. Can be null if data was missing or not yet populated.
+      - name: raw_ingested_at
+        description: Timestamp when this record was loaded into the raw dataset.

@@ -1,0 +1,51 @@
+version: 2
+
+models:
+  - name: stg_yfinance__tickers
+    description: Staged stock tickers metadata from yfinance.
+    columns:
+      - name: ticker
+        description: Unique stock ticker symbol (e.g. AAPL, SPY).
+        tests:
+          - unique
+          - not_null
+      - name: company_name
+        description: Standardized long name of the company or ETF.
+      - name: sector
+        description: Business sector.
+      - name: industry
+        description: Industry group.
+      - name: exchange
+        description: Trading exchange code.
+      - name: currency
+        description: Currency of price values.
+      - name: raw_ingested_at
+        description: Ingestion audit timestamp.
+
+  - name: stg_yfinance__prices
+    description: Staged daily historical stock and ETF prices.
+    columns:
+      - name: ticker
+        description: Stock ticker symbol.
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_yfinance__tickers')
+                field: ticker
+      - name: trading_date
+        description: Date of the daily price bar.
+        tests:
+          - not_null
+      - name: open_price
+        description: Opening price on the date.
+      - name: high_price
+        description: High price on the date.
+      - name: low_price
+        description: Low price on the date.
+      - name: close_price
+        description: Closing price on the date (adjusted for splits/dividends).
+      - name: trading_volume
+        description: Total shares traded.
+      - name: raw_ingested_at
+        description: Ingestion audit timestamp.

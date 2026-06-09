@@ -1,0 +1,26 @@
+version: 2
+
+sources:
+  - name: fred
+    database: anchor-495115
+    schema: raw_fred
+    tables:
+      - name: raw_fred_series
+        description: Metadata for Federal Reserve Economic Data (FRED) series.
+        columns:
+          - name: series_id
+            description: Unique identifier for the series.
+            tests:
+              - unique
+              - not_null
+      - name: raw_fred_observations
+        description: Time-series observations for Federal Reserve Economic Data (FRED) series.
+        columns:
+          - name: series_id
+            description: Unique identifier for the series.
+            tests:
+              - not_null
+          - name: date
+            description: Date of the observation.
+            tests:
+              - not_null
