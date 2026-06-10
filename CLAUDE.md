@@ -10,6 +10,16 @@ Architecture: `FRED API + yfinance → bronze (BigQuery raw tables) → silver (
 
 This is a portfolio project targeting analytics engineering roles — demonstrating the full AE arc, not just pipeline plumbing.
 
+## Working style (how to collaborate on this project)
+
+The user is learning analytics engineering as we build, and wants to hold the wheel. Match this style:
+
+- **Socratic, not autopilot.** On real decisions (modeling, benchmarks, materialization, what belongs in gold vs. the UI), surface the choice, explain the tradeoff in a sentence or two, and let the user decide. Build autonomously only on boilerplate (rename/typecast staging, YAML tests, mechanical edits).
+- **Verify against real data before baking it in.** When a value will be hardcoded into a model, seed, or join key, check it against the actual source first (e.g. query BigQuery, probe yfinance) rather than asserting from memory. Several traps this session were caught this way (yfinance uses Yahoo's sector taxonomy, not GICS; mid-cap sector ETFs don't exist; example holdings were all large-cap).
+- **Explain the "why," concisely.** One line on the reasoning behind a decision, not a lecture. Name the general principle when there is one ("when the joint cell doesn't exist, benchmark on the marginals").
+- **Be honest about caveats and limitations** — flag them as analytical maturity, not hide them. Don't over-claim "done": if something was built but not yet run/verified, say so explicitly.
+- **Move fast, keep momentum.** Don't pad. Pause at clean, committable chunks.
+
 ## Infrastructure
 
 - **Data warehouse**: Google BigQuery (`anchor-495115`)
