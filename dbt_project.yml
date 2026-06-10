@@ -40,6 +40,13 @@ vars:
   # label. A holding within this many pp of its benchmark reads "in_line".
   inline_band_pp: 2
 
+  # Dead-band half-widths (percentage points) for the macro regime states.
+  # A dimension's 3-month delta within +/- threshold reads as the neutral
+  # middle state; beyond it, rising/falling. Tunable, not baked into SQL.
+  regime_rate_threshold_pp: 0.25       # fed funds: ~one 25bp move
+  regime_inflation_threshold_pp: 0.3   # change in YoY inflation rate
+  regime_labor_threshold_pp: 0.2       # change in unemployment rate
+
 models:
   anchor:
     staging:

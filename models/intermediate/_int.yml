@@ -30,3 +30,37 @@ models:
         description: Percent change vs the last close of the previous calendar year.
       - name: return_1y_pct
         description: Percent change vs ~1 year ago (252 trading sessions back).
+
+  - name: int_macro_indicators
+    description: >
+      FRED macro series normalized into one uniform row per indicator: current
+      value, value 3 months ago, and the 3-month delta. Mixed-frequency safe
+      (calendar-date anchors, as-of values). Inflation is the derived CPI YoY
+      rate; level series pass through. Grain: one row per indicator_key.
+    columns:
+      - name: indicator_key
+        description: Stable indicator name (fed_funds_rate, ten_year_yield, unemployment_rate, inflation_yoy).
+        data_tests:
+          - unique
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['fed_funds_rate', 'ten_year_yield', 'unemployment_rate', 'inflation_yoy']
+      - name: source_series_id
+        description: Originating FRED series_id (traceability footer).
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_fred__series')
+                field: series_id
+      - name: as_of_date
+        description: Latest observation date for the source series.
+        data_tests:
+          - not_null
+      - name: current_value
+        description: Current value — level (%) for rate/labor series, YoY rate (%) for inflation.
+      - name: value_3mo_ago
+        description: Same metric as of ~3 months before the as-of date.
+      - name: delta_3mo
+        description: current_value - value_3mo_ago, in percentage points.

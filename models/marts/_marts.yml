@@ -86,3 +86,41 @@ models:
           - accepted_values:
               arguments:
                 values: ['ahead', 'behind', 'in_line']
+
+  - name: macro_regime
+    description: >
+      One-row characterization of the current macro environment, synthesized
+      from the rate / inflation / labor indicators. Each dimension's 3-month
+      delta is classified into a directional state (tunable dead-band via the
+      regime_*_threshold_pp vars). The sector tier reads this as its context
+      banner. Labor: rising unemployment = loosening labor market.
+    columns:
+      - name: as_of_date
+        description: Most recent contributing indicator date (data freshness).
+        data_tests:
+          - not_null
+      - name: rates_state
+        description: rising / easing / steady (from the fed funds 3-month delta).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['rising', 'easing', 'steady']
+      - name: inflation_state
+        description: rising / cooling / stable (from the YoY inflation 3-month delta).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['rising', 'cooling', 'stable']
+      - name: labor_state
+        description: tightening / loosening / stable (from the unemployment 3-month delta; inverted).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['tightening', 'loosening', 'stable']
+      - name: regime_summary
+        description: One-line composite phrase the UI can render as the regime banner.
+        data_tests:
+          - not_null
