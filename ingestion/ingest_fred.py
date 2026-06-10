@@ -28,12 +28,10 @@ DATASET_ID = "raw_fred"
 
 # The initial macroeconomic series to ingest
 FRED_SERIES = {
-    'GDP': 'Gross Domestic Product',
+    'DFF': 'Effective Federal Funds Rate',
     'CPIAUCSL': 'Consumer Price Index for All Urban Consumers: All Items',
-    'FEDFUNDS': 'Effective Federal Funds Rate',
     'UNRATE': 'Civilian Unemployment Rate',
-    'GS10': '10-Year Treasury Constant Maturity Rate',
-    'T10Y2Y': '10-Year Treasury Constant Maturity Minus 2-Year Treasury Constant Maturity'
+    'DGS10': '10-Year Treasury Constant Maturity Rate'
 }
 
 def fetch_series_metadata(series_id, api_key):

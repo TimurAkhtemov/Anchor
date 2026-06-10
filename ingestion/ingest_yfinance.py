@@ -25,7 +25,17 @@ load_dotenv()
 
 PROJECT_ID = "anchor-495115"
 DATASET_ID = "raw_yfinance"
-TICKERS = ['SPY', 'QQQ', 'IWM', 'AAPL', 'MSFT', 'GOOGL']
+
+# Two benchmark axes + the holdings we benchmark against them.
+# Sector ETFs (SPDR Select Sector) — benchmark axis 1: holding vs its sector
+SECTOR_ETFS = ['XLK', 'XLF', 'XLE', 'XLV', 'XLI']
+# Cap-style ETFs — benchmark axis 2: holding vs its market-cap tier (SPY=large, MDY=mid, IWM=small)
+CAP_STYLE_ETFS = ['SPY', 'MDY', 'IWM']
+# Individual holdings — spread across sectors AND cap tiers so both benchmark axes are exercised.
+# AAPL+IMMR are both Technology but different cap tiers (Large vs Small) — demonstrates the two axes.
+#   AAPL=Tech/Large  JPM=Financials/Large  HIMS=Healthcare/Mid  TALO=Energy/Mid  CVLG=Industrials/Small  IMMR=Tech/Small
+HOLDINGS = ['AAPL', 'JPM', 'HIMS', 'TALO', 'CVLG', 'IMMR']
+TICKERS = SECTOR_ETFS + CAP_STYLE_ETFS + HOLDINGS
 
 def fetch_ticker_metadata(ticker):
     """
@@ -99,6 +109,7 @@ def main():
             'name': info.get('longName') or info.get('shortName'),
             'sector': info.get('sector'),
             'industry': info.get('industry'),
+            'market_cap': info.get('marketCap'),  # null for ETFs; used to bucket holdings into cap tiers
             'exchange': info.get('exchange'),
             'currency': info.get('currency'),
             'ingested_at': ingested_at
@@ -132,6 +143,7 @@ def main():
             
     # Process metadata dataframe
     df_meta = pd.DataFrame(metadata_list)
+    df_meta['market_cap'] = pd.to_numeric(df_meta['market_cap'], errors='coerce').astype('Int64')  # Nullable Int
     df_meta['ingested_at'] = pd.to_datetime(df_meta['ingested_at'])
     
     # Process observations dataframe
@@ -154,6 +166,7 @@ def main():
         bigquery.SchemaField("name", "STRING", mode="NULLABLE"),
         bigquery.SchemaField("sector", "STRING", mode="NULLABLE"),
         bigquery.SchemaField("industry", "STRING", mode="NULLABLE"),
+        bigquery.SchemaField("market_cap", "INTEGER", mode="NULLABLE"),
         bigquery.SchemaField("exchange", "STRING", mode="NULLABLE"),
         bigquery.SchemaField("currency", "STRING", mode="NULLABLE"),
         bigquery.SchemaField("ingested_at", "TIMESTAMP", mode="REQUIRED")

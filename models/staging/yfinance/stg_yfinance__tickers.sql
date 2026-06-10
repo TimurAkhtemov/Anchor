@@ -11,6 +11,7 @@ renamed as (
         name as company_name,
         sector,
         industry,
+        market_cap,
         exchange,
         currency,
         ingested_at as raw_ingested_at

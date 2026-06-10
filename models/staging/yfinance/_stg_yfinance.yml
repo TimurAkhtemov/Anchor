@@ -12,9 +12,11 @@ models:
       - name: company_name
         description: Standardized long name of the company or ETF.
       - name: sector
-        description: Business sector.
+        description: Business sector, using yfinance/Yahoo's taxonomy (e.g. "Financial Services", "Consumer Cyclical") — not GICS names. Null for ETFs.
       - name: industry
         description: Industry group.
+      - name: market_cap
+        description: Current market capitalization in USD. Used to bucket holdings into cap tiers (large/mid/small). Null for ETFs.
       - name: exchange
         description: Trading exchange code.
       - name: currency
