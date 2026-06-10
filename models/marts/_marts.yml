@@ -124,3 +124,34 @@ models:
         description: One-line composite phrase the UI can render as the regime banner.
         data_tests:
           - not_null
+
+  - name: sector_performance
+    description: >
+      Sector tier: each ingested SPDR sector ETF's performance plus its recent
+      co-movement with the 10-year yield. Read under the macro_regime banner
+      and above the holdings tier. Grain: one row per sector ETF.
+    columns:
+      - name: etf_ticker
+        description: Sector ETF symbol. Primary key.
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_yfinance__tickers')
+                field: ticker
+      - name: sector
+        description: Yahoo-taxonomy sector name this ETF represents.
+        data_tests:
+          - not_null
+      - name: as_of_date
+        description: Common as-of date from int_ticker_returns.
+        data_tests:
+          - not_null
+      - name: rate_comovement_label
+        description: moves with rates / moves against rates / rate-neutral, against the comovement_threshold band.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['moves with rates', 'moves against rates', 'rate-neutral']

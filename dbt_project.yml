@@ -47,6 +47,11 @@ vars:
   regime_inflation_threshold_pp: 0.3   # change in YoY inflation rate
   regime_labor_threshold_pp: 0.2       # change in unemployment rate
 
+  # Sector <-> rates co-movement: trailing window for the correlation, and the
+  # |corr| dead-band for the moves-with / moves-against / rate-neutral label.
+  comovement_window_days: 60           # ~3 months, matches the regime horizon
+  comovement_threshold: 0.2
+
 models:
   anchor:
     staging:

@@ -64,3 +64,26 @@ models:
         description: Same metric as of ~3 months before the as-of date.
       - name: delta_3mo
         description: current_value - value_3mo_ago, in percentage points.
+
+  - name: int_sector_rate_comovement
+    description: >
+      Realized trailing co-movement of each sector ETF with interest rates:
+      corr(daily return, daily change in the 10-year yield) over the
+      comovement_window_days window. Descriptive of a recent window, not a
+      structural sensitivity. Grain: one row per sector ETF.
+    columns:
+      - name: etf_ticker
+        description: Sector ETF symbol.
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_yfinance__tickers')
+                field: ticker
+      - name: n_obs
+        description: Number of aligned (return, rate-change) days in the window.
+        data_tests:
+          - not_null
+      - name: rate_comovement
+        description: Correlation in [-1, 1]; positive = rose with rising yields, negative = fell.
