@@ -155,3 +155,61 @@ models:
           - accepted_values:
               arguments:
                 values: ['moves with rates', 'moves against rates', 'rate-neutral']
+
+  - name: macro_indicators
+    description: >
+      Macro tier display cards: one row per macro indicator with current value,
+      3-month delta, direction, and FRED metadata (title/units/source_series_id)
+      for the traceability footer. Grain: one row per indicator_key.
+    columns:
+      - name: indicator_key
+        description: Stable indicator name.
+        data_tests:
+          - unique
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['fed_funds_rate', 'ten_year_yield', 'unemployment_rate', 'inflation_yoy']
+      - name: source_series_id
+        description: Originating FRED series_id.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_fred__series')
+                field: series_id
+      - name: direction
+        description: up / down / flat from the sign of delta_3mo.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['up', 'down', 'flat']
+
+  - name: macro_trend
+    description: >
+      Macro sparkline source — trailing macro_trend_months of each indicator's
+      series (inflation as the YoY trajectory). FRED analog of ticker_trend.
+      Grain: one row per (indicator_key, observation_date).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - indicator_key
+              - observation_date
+    columns:
+      - name: indicator_key
+        description: Stable indicator name.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['fed_funds_rate', 'ten_year_yield', 'unemployment_rate', 'inflation_yoy']
+      - name: observation_date
+        description: Observation date of the point.
+        data_tests:
+          - not_null
+      - name: value
+        description: Indicator value at the date (level, or YoY % for inflation).
+        data_tests:
+          - not_null

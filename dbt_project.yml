@@ -52,6 +52,9 @@ vars:
   comovement_window_days: 60           # ~3 months, matches the regime horizon
   comovement_threshold: 0.2
 
+  # Trailing window (months) for the macro indicator sparklines.
+  macro_trend_months: 12
+
 models:
   anchor:
     staging:
