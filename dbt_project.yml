@@ -35,9 +35,16 @@ clean-targets:         # directories to be removed by `dbt clean`
 # continue to be built as views. These settings can be overridden in the individual model files
 # using the `{{ config(...) }}` macro.
 
+vars:
+  # In-line band half-width (percentage points) for the ahead/behind/in_line
+  # label. A holding within this many pp of its benchmark reads "in_line".
+  inline_band_pp: 2
+
 models:
   anchor:
     staging:
+      +materialized: view
+    intermediate:
       +materialized: view
     marts:
       +materialized: table

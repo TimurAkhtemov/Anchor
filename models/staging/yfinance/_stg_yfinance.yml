@@ -2,10 +2,18 @@ version: 2
 
 models:
   - name: stg_yfinance__tickers
-    description: Staged stock tickers metadata from yfinance.
+    description: >
+      Staged stock tickers metadata from yfinance. Grain: one row per security.
     columns:
       - name: ticker
-        description: Unique stock ticker symbol (e.g. AAPL, SPY).
+        description: >
+          Yahoo Finance symbol (e.g. AAPL, SPY). Primary key. Unique within our
+          declared namespace — one security per Yahoo symbol, single source,
+          US-listed config. Yahoo disambiguates foreign listings with a suffix
+          (RY.TO, BMW.DE), so the symbol string itself encodes the exchange and
+          no collision reaches us. NOTE: bare ticker is not a globally stable
+          key — if we ever ingest multiple exchanges, the natural key becomes
+          (symbol, MIC) and we'd introduce a surrogate security_id.
         data_tests:
           - unique
           - not_null
@@ -25,10 +33,18 @@ models:
         description: Ingestion audit timestamp.
 
   - name: stg_yfinance__prices
-    description: Staged daily historical stock and ETF prices.
+    description: >
+      Staged daily historical stock and ETF prices. Grain: one row per
+      ticker per trading_date (composite primary key).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - ticker
+              - trading_date
     columns:
       - name: ticker
-        description: Stock ticker symbol.
+        description: Yahoo Finance symbol. FK to stg_yfinance__tickers.ticker.
         data_tests:
           - not_null
           - relationships:

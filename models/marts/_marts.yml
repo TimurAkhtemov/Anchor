@@ -1,0 +1,88 @@
+version: 2
+
+models:
+  - name: ticker_trend
+    description: >
+      Long sparkline source — the most recent 30 trading sessions per ticker.
+      Grain: one row per ticker per trading_date. The serve layer shapes these
+      into a sparkline.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - ticker
+              - trading_date
+    columns:
+      - name: ticker
+        description: Yahoo Finance symbol. FK to stg_yfinance__tickers.ticker.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_yfinance__tickers')
+                field: ticker
+      - name: trading_date
+        description: Session date of the bar.
+        data_tests:
+          - not_null
+      - name: close_price
+        description: Closing price (split/dividend adjusted).
+
+  - name: holdings_benchmarks
+    description: >
+      Holdings-tier mart. Each holding paired with both benchmarks (sector +
+      cap-style), holding% and benchmark% computed together as one row per
+      pairing, with the relative position (pp) and an ahead/behind/in_line
+      label per horizon. Grain: one row per (holding_ticker, benchmark_type).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - holding_ticker
+              - benchmark_type
+    columns:
+      - name: holding_ticker
+        description: The individual holding's symbol.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_yfinance__tickers')
+                field: ticker
+      - name: sector
+        description: Holding's live yfinance sector (Yahoo taxonomy). Sector-axis join key.
+        data_tests:
+          - not_null
+      - name: cap_tier
+        description: Derived cap tier (Large >=$10B, Mid $2-10B, Small <$2B). Cap-style-axis join key.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Large', 'Mid', 'Small']
+      - name: benchmark_type
+        description: Which axis this row benchmarks on.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['sector', 'cap_style']
+      - name: benchmark_etf
+        description: The benchmark ETF for this axis.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_yfinance__tickers')
+                field: ticker
+      - name: relative_1m_pp
+        description: holding% - benchmark% over 1 month, in percentage points. Default-horizon relative position.
+        data_tests:
+          - not_null
+      - name: label_1m
+        description: ahead / behind / in_line over 1 month, against the inline_band_pp band.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['ahead', 'behind', 'in_line']

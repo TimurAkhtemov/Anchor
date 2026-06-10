@@ -1,0 +1,32 @@
+version: 2
+
+models:
+  - name: int_ticker_returns
+    description: >
+      Per-ticker scalar returns for every ticker (holdings + benchmark ETFs),
+      measured to a single common as-of date so any holding and its benchmark
+      are compared over the identical window. Grain: one row per ticker.
+    columns:
+      - name: ticker
+        description: Yahoo Finance symbol. Primary key.
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_yfinance__tickers')
+                field: ticker
+      - name: as_of_date
+        description: Common as-of date — max(trading_date) across the market calendar. Same for every row.
+        data_tests:
+          - not_null
+      - name: latest_close
+        description: Close on the as-of date.
+      - name: daily_return_pct
+        description: Percent change, as-of date vs prior trading session.
+      - name: return_1m_pct
+        description: Percent change vs ~1 month ago (21 trading sessions back).
+      - name: return_ytd_pct
+        description: Percent change vs the last close of the previous calendar year.
+      - name: return_1y_pct
+        description: Percent change vs ~1 year ago (252 trading sessions back).
