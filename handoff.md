@@ -44,22 +44,28 @@ snapshot (`app/snapshot/*.parquet`) — no GCP creds. `app/data.py` auto-detects
 (bigquery local / snapshot cloud); `app/export_snapshot.py` regenerates the snapshot
 (run it + push to refresh the live demo). See the `reference-live-deploy` memory.
 
-## IMMEDIATE next step — the rest of the ops capstone
+## DONE — dbt docs / lineage
 
-Remaining cheap/high-impact wins, in rough order:
+**Live: https://timurakhtemov.github.io/Anchor/** (GitHub Pages, published by
+`.github/workflows/docs.yml`). v1 is secret-free: serves the committed self-contained
+static site `site/index.html` (`dbt docs generate --static --target prod`). Refresh =
+regenerate, copy `target/static_index.html` → `site/index.html`, push. Pages source is
+set to "GitHub Actions". (Node 20 action-deprecation warning is non-blocking; bump
+action versions when convenient.)
 
-- **dbt docs / lineage** — `dbt docs generate` → static site on GitHub Pages. Highest
-  portfolio value, layered `anchor_*` schemas make the graph readable. Can be generated
-  locally (creds present) and the static site committed/served — no secret needed for v1.
-- **CI on PRs** — GitHub Actions: `dbt build` (needs the BQ SA key as a repo secret) +
-  SQLFluff lint. **Prereq:** upload `~/.dbt/anchor-bigquery-key.json` as a GitHub Actions
-  secret (sensitive/outward-facing — confirm before doing it).
-- **Scheduling** — post-close cron (GitHub Actions): `ingest → dbt build --target prod
-  → export_snapshot → push` (auto-redeploys the live app). Needs the same BQ secret +
-  the FRED API key secret, and a push-back token.
+## IMMEDIATE next step — CI, then scheduling (both need the BQ secret)
 
-The BQ-secret setup is the shared unlock for CI + scheduling; dbt docs can land first
-without it.
+The remaining ops pieces share one prerequisite: **the BigQuery SA key as a GitHub
+Actions secret** (`~/.dbt/anchor-bigquery-key.json`). This is sensitive/outward-facing —
+confirm before uploading. Once it's set:
+
+- **CI on PRs** — GitHub Actions: SQLFluff lint (secret-free, can land first) + `dbt
+  build` against BigQuery (needs the secret). Surfaces broken models/tests before merge.
+- **Scheduling** — post-close cron: `ingest → dbt build --target prod → export_snapshot
+  → push` (auto-redeploys the live Streamlit app + can re-publish docs). Needs the BQ
+  secret + the FRED API key secret + a push-back token.
+
+SQLFluff CI can start without the secret; `dbt build` CI + scheduling wait on it.
 
 ## Strategic direction (agreed) — two capstones make it "a living data product"
 
