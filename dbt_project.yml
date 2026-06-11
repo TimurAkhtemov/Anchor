@@ -55,11 +55,22 @@ vars:
   # Trailing window (months) for the macro indicator sparklines.
   macro_trend_months: 12
 
+# Custom schemas are honored in prod only (see macros/generate_schema_name.sql).
+# In dev everything collapses into the personal sandbox dataset; in prod these
+# route to anchor_staging / anchor_intermediate / anchor_marts — the named
+# contract the dashboard and scheduled builds read.
 models:
   anchor:
     staging:
       +materialized: view
+      +schema: anchor_staging
     intermediate:
       +materialized: view
+      +schema: anchor_intermediate
     marts:
       +materialized: table
+      +schema: anchor_marts
+
+seeds:
+  anchor:
+    +schema: anchor_seeds

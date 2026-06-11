@@ -36,7 +36,7 @@ latest as (
 -- the calendar anchors we need values at, per series
 anchor_targets as (
 
-    select series_id, as_of_date, 'now'  as anchor, as_of_date                               as target_date from latest
+    select series_id, as_of_date, 'now'  as anchor, as_of_date as target_date from latest
     union all
     select series_id, as_of_date, '3mo',  date_sub(as_of_date, interval 3 month)  from latest
     union all
