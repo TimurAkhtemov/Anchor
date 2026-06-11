@@ -1,13 +1,15 @@
-# dbt profile used only in CI (GitHub Actions sets DBT_PROFILES_DIR=ci).
+# dbt profiles for automation (GitHub Actions sets DBT_PROFILES_DIR=ci).
 #
-# The workflow writes the BigQuery service-account JSON (from the BQ_SA_KEY
-# repo secret) to the keyfile path below, then runs `dbt build --target ci`.
-# target.name == 'ci' (not 'prod'), so generate_schema_name ignores the custom
-# +schema configs and everything builds into one throwaway CI dataset (dbt_ci),
-# isolated from both the prod contract and the personal dev sandbox.
+# Two targets, both authed by the BQ_SA_KEY repo secret written to the keyfile
+# path below:
+#   ci   — used by CI on PRs/pushes. target.name != 'prod', so
+#          generate_schema_name ignores the +schema configs and everything
+#          builds into one throwaway dataset (dbt_ci), isolated from prod.
+#   prod — used by the scheduled refresh. Routes models into the named contract
+#          (anchor_staging / anchor_intermediate / anchor_marts / anchor_seeds).
 #
 # To go keyless (Workload Identity Federation) later: swap the workflow's auth
-# step and change `method` here to `oauth` (ADC) — no other changes.
+# step and change `method` to `oauth` (ADC) — no other changes here.
 
 anchor:
   target: ci
@@ -17,6 +19,14 @@ anchor:
       method: service-account
       project: anchor-495115
       dataset: dbt_ci
+      keyfile: /tmp/anchor-bq-key.json
+      threads: 4
+      location: US
+    prod:
+      type: bigquery
+      method: service-account
+      project: anchor-495115
+      dataset: anchor
       keyfile: /tmp/anchor-bq-key.json
       threads: 4
       location: US
