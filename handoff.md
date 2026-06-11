@@ -36,19 +36,30 @@ Run with `streamlit run app/app.py` (needs `GOOGLE_APPLICATION_CREDENTIALS`). Go
 restarting the streamlit server drops open browser tabs' connections — hard-refresh
 (Cmd+Shift+R) after a restart or the page renders stale/half-scrolled.
 
-## IMMEDIATE next step — public deploy + ops (the cheap, high-impact capstone)
+## DONE — public deploy
 
-The v1 serve layer is done. Pick up on the **ops capstone**, starting with the public
-deploy because it plugs straight into the seam already built:
+**Live: https://anchor-dashboard.streamlit.app** (Streamlit Community Cloud, public
+repo, deploys from `main`, entrypoint `app/app.py`). Serves the committed parquet
+snapshot (`app/snapshot/*.parquet`) — no GCP creds. `app/data.py` auto-detects source
+(bigquery local / snapshot cloud); `app/export_snapshot.py` regenerates the snapshot
+(run it + push to refresh the live demo). See the `reference-live-deploy` memory.
 
-- **Public deploy (Streamlit Community Cloud).** Export `anchor_marts` to a small
-  committed snapshot (parquet or a single DuckDB file), then flip `app/data.py`'s
-  `SOURCE` from `bigquery` to `snapshot` (the `_read()` choke point + `NotImplementedError`
-  stub are already there) so the demo needs **no GCP creds** and stays free. The
-  6-stock watchlist is the demo portfolio.
-- **Then:** schedule ingest → `dbt build --target prod` → snapshot-export → push
-  (GitHub Actions, post-close); CI (`dbt build` + SQLFluff) on PRs; dbt docs/lineage on
-  GitHub Pages (the layered `anchor_*` schemas make the graph readable).
+## IMMEDIATE next step — the rest of the ops capstone
+
+Remaining cheap/high-impact wins, in rough order:
+
+- **dbt docs / lineage** — `dbt docs generate` → static site on GitHub Pages. Highest
+  portfolio value, layered `anchor_*` schemas make the graph readable. Can be generated
+  locally (creds present) and the static site committed/served — no secret needed for v1.
+- **CI on PRs** — GitHub Actions: `dbt build` (needs the BQ SA key as a repo secret) +
+  SQLFluff lint. **Prereq:** upload `~/.dbt/anchor-bigquery-key.json` as a GitHub Actions
+  secret (sensitive/outward-facing — confirm before doing it).
+- **Scheduling** — post-close cron (GitHub Actions): `ingest → dbt build --target prod
+  → export_snapshot → push` (auto-redeploys the live app). Needs the same BQ secret +
+  the FRED API key secret, and a push-back token.
+
+The BQ-secret setup is the shared unlock for CI + scheduling; dbt docs can land first
+without it.
 
 ## Strategic direction (agreed) — two capstones make it "a living data product"
 

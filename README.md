@@ -11,9 +11,11 @@ is the **build** — layered dbt modeling, deliberate design decisions, and hone
 treatment of limitations — not just a working chart.
 
 > **Status:** bronze → silver → gold → serve is built, tested, and green (92/92 dbt
-> nodes). The **Streamlit dashboard reads the gold marts** through a swappable data
-> seam. Public deploy, dynamic portfolio ingestion, and multi-asset benchmarking are
-> designed and documented (`docs/`) but not yet built.
+> nodes), and **deployed live: [anchor-dashboard.streamlit.app](https://anchor-dashboard.streamlit.app)**.
+> The dashboard reads the gold marts through a swappable data seam (live BigQuery
+> locally, committed snapshot in the cloud). Orchestration/CI, dynamic portfolio
+> ingestion, and multi-asset benchmarking are designed and documented (`docs/`) but
+> not yet built.
 
 ---
 
@@ -89,7 +91,8 @@ cap tiers, which is the clearest one-glance proof the two-axis design does somet
 ## The serve layer (`app/`)
 
 A single top-down Streamlit page enforcing the reading order: macro regime + indicator
-cards → sector performance → holdings, each tier under the one above it.
+cards → sector performance → holdings, each tier under the one above it. **Live:
+[anchor-dashboard.streamlit.app](https://anchor-dashboard.streamlit.app).**
 
 - **`app/data.py` — the data seam.** The UI calls `data.get_*()` functions and never
   knows the source. Today every read is a cached live query against `anchor_marts`; a
@@ -182,10 +185,10 @@ Captured design, deferred build:
   free personal tier). Deliberate **demo (sample portfolio) vs. real (private)** split so
   the public deploy never shows real financial data. Real holdings force the multi-asset
   work — they ship as one "make it real" milestone.
-- **Public deploy + ops** — Streamlit Community Cloud (flip the `data.py` `SOURCE` switch
-  to a committed snapshot so the demo needs no live creds), scheduled post-close
-  ingest → `dbt build --target prod`, CI (`dbt build` + SQLFluff on PRs), and dbt
-  docs/lineage on GitHub Pages.
+- **Ops** — **public deploy is live** (Streamlit Community Cloud reads the committed
+  snapshot via the `data.py` `SOURCE` switch; `app/export_snapshot.py` regenerates it).
+  Remaining: scheduled post-close `ingest → dbt build --target prod → export_snapshot
+  → push`, CI (`dbt build` + SQLFluff on PRs), and dbt docs/lineage on GitHub Pages.
 
 ---
 
