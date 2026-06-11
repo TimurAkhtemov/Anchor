@@ -8,3 +8,9 @@ venv/
 .env
 codegen.sql
 temp_codegen.sql
+
+# serve-layer / tooling artifacts
+__pycache__/
+.playwright-mcp/
+anchor-v1.png
+*.png

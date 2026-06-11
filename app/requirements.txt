@@ -1,0 +1,10 @@
+# Anchor serve layer (Streamlit dashboard). Kept separate from
+# ingestion/requirements.txt — the app reads marts, it doesn't ingest.
+streamlit
+altair
+pandas
+# BigQuery read path (local dev / snapshot-export step). The public deploy
+# reads a committed snapshot instead and won't need these.
+google-cloud-bigquery
+db-dtypes
+pyarrow
