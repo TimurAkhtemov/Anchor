@@ -43,6 +43,11 @@ def signed_pp(x, digits=2):
     return "—" if pd.isna(x) else f"{x:+.{digits}f} pp"
 
 
+def fmt_date(x) -> str:
+    """YYYY-MM-DD regardless of source dtype (BigQuery dbdate vs snapshot datetime64)."""
+    return "—" if pd.isna(x) else str(pd.to_datetime(x).date())
+
+
 def ret_color(x) -> str:
     if pd.isna(x):
         return SLATE

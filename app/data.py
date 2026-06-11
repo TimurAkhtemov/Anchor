@@ -18,17 +18,32 @@ import pandas as pd
 import streamlit as st
 
 # --- source config ----------------------------------------------------------
-# "bigquery" = live reads from the prod marts (local dev).
-# "snapshot" = read a committed parquet/DuckDB file (public deploy) — not wired
-#              up yet; the seam is here so flipping it is a localized change.
-SOURCE = os.environ.get("ANCHOR_SOURCE", "bigquery")
-
 PROJECT = "anchor-495115"
 MARTS_DATASET = "anchor_marts"
+SNAPSHOT_DIR = Path(__file__).parent / "snapshot"
 _KEY_PATH = os.environ.get(
     "GOOGLE_APPLICATION_CREDENTIALS",
     str(Path.home() / ".dbt" / "anchor-bigquery-key.json"),
 )
+
+
+def _resolve_source() -> str:
+    """Pick the data backend.
+
+    "bigquery" = live reads from the prod marts. "snapshot" = read the committed
+    parquet files (app/snapshot/) — what the public deploy uses, since Streamlit
+    Community Cloud has no GCP creds. Auto-detect: live when a SA key is present
+    (local dev), snapshot otherwise (the cloud), with an explicit env override.
+    """
+    explicit = os.environ.get("ANCHOR_SOURCE")
+    if explicit:
+        return explicit
+    if os.environ.get("GOOGLE_APPLICATION_CREDENTIALS") or Path(_KEY_PATH).exists():
+        return "bigquery"
+    return "snapshot"
+
+
+SOURCE = _resolve_source()
 
 # Marts refresh post-close (daily), never intraday — an hour TTL is plenty and
 # keeps repeated reruns off the warehouse.
@@ -51,7 +66,9 @@ def _read(table: str) -> pd.DataFrame:
     if SOURCE == "bigquery":
         sql = f"select * from `{PROJECT}.{MARTS_DATASET}.{table}`"
         return _client().query(sql).to_dataframe()
-    raise NotImplementedError(f"source {SOURCE!r} not wired up yet")
+    if SOURCE == "snapshot":
+        return pd.read_parquet(SNAPSHOT_DIR / f"{table}.parquet")
+    raise ValueError(f"unknown ANCHOR_SOURCE {SOURCE!r} (expected 'bigquery' or 'snapshot')")
 
 
 # --- tier readers (the UI's vocabulary) -------------------------------------

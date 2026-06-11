@@ -46,7 +46,7 @@ def render_macro():
     )
     st.markdown(
         f"<div style='margin:2px 0 4px'>{chips}</div>"
-        f"<span style='color:{ui.SLATE};font-size:0.85rem'>as of {regime['as_of_date']}</span>",
+        f"<span style='color:{ui.SLATE};font-size:0.85rem'>as of {ui.fmt_date(regime['as_of_date'])}</span>",
         unsafe_allow_html=True,
     )
 
