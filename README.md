@@ -10,9 +10,10 @@ This is a portfolio project targeting analytics-engineering roles. The deliverab
 is the **build** — layered dbt modeling, deliberate design decisions, and honest
 treatment of limitations — not just a working chart.
 
-> **Status:** bronze → silver → gold is built, tested, and green (92/92 dbt nodes).
-> The Streamlit serve layer is the next phase. Dynamic portfolio ingestion and
-> multi-asset benchmarking are designed and documented (`docs/`) but not yet built.
+> **Status:** bronze → silver → gold → serve is built, tested, and green (92/92 dbt
+> nodes). The **Streamlit dashboard reads the gold marts** through a swappable data
+> seam. Public deploy, dynamic portfolio ingestion, and multi-asset benchmarking are
+> designed and documented (`docs/`) but not yet built.
 
 ---
 
@@ -37,8 +38,15 @@ FRED API + yfinance
    gold   — relationship-framed marts the dashboard reads
         │
         ▼
-   serve  — Streamlit (planned), three-tier top-down layout
+   serve  — Streamlit, three-tier top-down layout (app/)
 ```
+
+**dev / prod separation.** Models materialize into a named, layered **prod**
+namespace (`anchor_staging` / `anchor_intermediate` / `anchor_marts` / `anchor_seeds`)
+via `dbt build --target prod`; local dev runs collapse into a single personal sandbox
+schema. The serve layer (and any future scheduled build) reads the stable
+`anchor_marts` contract, never a developer sandbox. Routing lives in
+`macros/generate_schema_name.sql` (the dbt-fundamentals custom-schema pattern).
 
 ---
 
@@ -75,6 +83,29 @@ cap tiers, which is the clearest one-glance proof the two-axis design does somet
 | Sector | `sector_performance` | sector ETF returns + realized rate co-movement + label |
 | Holdings | `holdings_benchmarks` | each holding paired with **both** benchmarks, relative position + label per horizon |
 | Shared | `ticker_trend` | sparkline series for every ticker (sectors + holdings) |
+
+---
+
+## The serve layer (`app/`)
+
+A single top-down Streamlit page enforcing the reading order: macro regime + indicator
+cards → sector performance → holdings, each tier under the one above it.
+
+- **`app/data.py` — the data seam.** The UI calls `data.get_*()` functions and never
+  knows the source. Today every read is a cached live query against `anchor_marts`; a
+  single `SOURCE` switch + one `_read()` choke point lets the public deploy swap to a
+  committed snapshot file with **zero UI edits**. This mirrors the gold contract:
+  callers get relationship-framed DataFrames, never raw joins.
+- **`app/ui.py` — the visual vocabulary.** Shared palette, chips, status pills, and
+  Altair sparklines so the three tiers read as one product (theme in
+  `.streamlit/config.toml`).
+- **Honest color semantics.** Macro deltas are direction-colored (orange/blue/gray),
+  never green/red — macro is context, not performance. Returns and ahead/behind labels
+  *are* green/red, because there the judgment is the point.
+
+```bash
+streamlit run app/app.py     # reads anchor_marts via the data seam
+```
 
 ---
 
@@ -151,7 +182,10 @@ Captured design, deferred build:
   free personal tier). Deliberate **demo (sample portfolio) vs. real (private)** split so
   the public deploy never shows real financial data. Real holdings force the multi-asset
   work — they ship as one "make it real" milestone.
-- **Streamlit serve layer** — three-tier top-down dashboard reading directly from the marts.
+- **Public deploy + ops** — Streamlit Community Cloud (flip the `data.py` `SOURCE` switch
+  to a committed snapshot so the demo needs no live creds), scheduled post-close
+  ingest → `dbt build --target prod`, CI (`dbt build` + SQLFluff on PRs), and dbt
+  docs/lineage on GitHub Pages.
 
 ---
 
@@ -168,8 +202,12 @@ python ingestion/ingest_yfinance.py
 
 # 2. dbt packages + build + test
 dbt deps
-dbt build           # run + test all models and the seed
-dbt test            # tests only
+dbt build                  # dev: run + test all models into the personal sandbox
+dbt build --target prod    # prod: materialize into the anchor_* datasets
+
+# 3. serve layer (reads anchor_marts)
+pip install -r app/requirements.txt
+streamlit run app/app.py
 ```
 
 Useful selectors: `dbt build --select staging`, `dbt build --select marts`,
@@ -182,7 +220,7 @@ Useful selectors: `dbt build --select staging`, `dbt build --select marts`,
 - **Warehouse:** Google BigQuery (`anchor-495115`)
 - **Transformation:** dbt (Fusion 2.0), with `dbt_utils` + `codegen`
 - **Ingestion:** Python — FRED REST via `requests`, `yfinance`, `pandas` → BigQuery, python-dotenv
-- **Serve (planned):** Streamlit
+- **Serve:** Streamlit + Altair, reading the marts through a cached data seam
 
 ## Repo layout
 
@@ -192,8 +230,10 @@ models/
   staging/    silver — rename/typecast
   intermediate/  shared computation
   marts/      gold — the served, relationship-framed tier
-macros/       ahead_behind, three_way_state
+macros/       ahead_behind, three_way_state, generate_schema_name (dev/prod routing)
 seeds/        benchmark_etfs.csv (the benchmark axis mapping)
 tests/        singular guardrail tests
+app/          Streamlit serve layer — app.py (page), data.py (seam), ui.py (visuals)
+.streamlit/   theme config
 docs/         roadmap design docs (ingestion, multi-asset)
 ```

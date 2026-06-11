@@ -1,14 +1,15 @@
 # Anchor — Session Handoff
 
-_Last updated: 2026-06-11. The **`README.md` is now the canonical project doc** —
-architecture, model map, design decisions, limitations, roadmap. Read it first.
-This file is just the lean "current state + what's next" pointer. Also see
-`CLAUDE.md` (working style) and `docs/` (deferred roadmaps)._
+_Last updated: 2026-06-11 (serve layer + prod datasets). The **`README.md` is the
+canonical project doc** — architecture, model map, design decisions, limitations,
+roadmap. Read it first. This file is just the lean "current state + what's next"
+pointer. Also see `CLAUDE.md` (working style) and `docs/` (deferred roadmaps)._
 
 ## State of the world
 
-**Bronze → silver → gold is complete, tested, and green — `dbt build` = 92/92.**
-The full `macro → sector → holdings` spine is built and verified against real data.
+**Bronze → silver → gold → serve is complete, tested, and green — `dbt build` = 92/92.**
+The full `macro → sector → holdings` spine is built, verified against real data, and
+now rendered by a Streamlit dashboard.
 
 Gold marts (all in `models/marts/`):
 - **Macro:** `macro_indicators` (cards), `macro_trend` (sparklines), `macro_regime` (regime banner)
@@ -17,25 +18,37 @@ Gold marts (all in `models/marts/`):
 - **Shared:** `ticker_trend`, `int_ticker_returns`, `int_macro_indicators`
 
 Bronze→silver was already live (FRED 4 series / 44,979 obs; yfinance 14 tickers /
-17,570 bars) and remains green. Models build into dev schema `dbt_timurakhtemov`.
+17,570 bars) and remains green.
 
-## IMMEDIATE next step — Streamlit serve layer (v1)
+**Dev / prod datasets (new this session).** Models now route via
+`macros/generate_schema_name.sql`: plain `dbt build` collapses into the personal
+sandbox `dbt_timurakhtemov` (which still holds orphaned dbt-tutorial tables — harmless,
+not the serve source); `dbt build --target prod` materializes the named contract
+`anchor_staging` / `anchor_intermediate` / `anchor_marts` / `anchor_seeds`. **The
+dashboard reads `anchor_marts`.** A `prod` target was added to `~/.dbt/profiles.yml`
+(dataset `anchor`, same SA key).
 
-The dbt layer is done for v1; this is where to pick up. **The approach is already
-agreed — don't re-litigate, just scaffold:**
+**Serve layer (new this session) — `app/`.** Single top-down page (macro → sectors →
+holdings), live from `anchor_marts`. `app/data.py` is the data seam (cached `_read()`
+choke point + a `SOURCE` switch for the future snapshot path — no UI knows the source);
+`app/ui.py` is the shared visual vocabulary; `.streamlit/config.toml` is the teal theme.
+Run with `streamlit run app/app.py` (needs `GOOGLE_APPLICATION_CREDENTIALS`). Gotcha:
+restarting the streamlit server drops open browser tabs' connections — hard-refresh
+(Cmd+Shift+R) after a restart or the page renders stale/half-scrolled.
 
-- **Layout:** single top-down page enforcing the reading order — macro cards + regime
-  banner on top, sectors (with co-movement) in the middle, holdings (two-axis,
-  ahead/behind) at the bottom. Build **all three tiers**, skeleton → fill. Sparklines
-  from `macro_trend` / `ticker_trend`.
-- **Data access:** local dev = query the BigQuery marts directly
-  (`google-cloud-bigquery` + the SA key), cached with `@st.cache_data`. For the eventual
-  **public deploy**, snapshot the marts to a small committed file (parquet/DuckDB) so the
-  demo needs no live BQ creds and stays free. Defer the snapshot until the deploy step.
-- **Charting:** Altair (control over sparklines + ahead/behind color encoding).
-- **Demo data:** the current 6-stock watchlist *is* the demo portfolio for now.
-- **Setup:** add `streamlit` (+ `altair`) to deps; cached BQ connection; stub the
-  three-tier page; then fill each tier.
+## IMMEDIATE next step — public deploy + ops (the cheap, high-impact capstone)
+
+The v1 serve layer is done. Pick up on the **ops capstone**, starting with the public
+deploy because it plugs straight into the seam already built:
+
+- **Public deploy (Streamlit Community Cloud).** Export `anchor_marts` to a small
+  committed snapshot (parquet or a single DuckDB file), then flip `app/data.py`'s
+  `SOURCE` from `bigquery` to `snapshot` (the `_read()` choke point + `NotImplementedError`
+  stub are already there) so the demo needs **no GCP creds** and stays free. The
+  6-stock watchlist is the demo portfolio.
+- **Then:** schedule ingest → `dbt build --target prod` → snapshot-export → push
+  (GitHub Actions, post-close); CI (`dbt build` + SQLFluff) on PRs; dbt docs/lineage on
+  GitHub Pages (the layered `anchor_*` schemas make the graph readable).
 
 ## Strategic direction (agreed) — two capstones make it "a living data product"
 
