@@ -53,19 +53,24 @@ regenerate, copy `target/static_index.html` → `site/index.html`, push. Pages s
 set to "GitHub Actions". (Node 20 action-deprecation warning is non-blocking; bump
 action versions when convenient.)
 
-## IMMEDIATE next step — CI, then scheduling (both need the BQ secret)
+## DONE — CI
 
-The remaining ops pieces share one prerequisite: **the BigQuery SA key as a GitHub
-Actions secret** (`~/.dbt/anchor-bigquery-key.json`). This is sensitive/outward-facing —
-confirm before uploading. Once it's set:
+**`.github/workflows/ci.yml`** builds + tests on every PR/push to main: `dbt build
+--target ci` compiles all models, builds into the isolated `dbt_ci` dataset, runs all
+92 tests. Auth via the **`BQ_SA_KEY`** repo secret (the existing SA key — set this
+session). `ci/profiles.yml` defines the `ci` target. A guard job skips the build (run
+stays green) if the secret is ever absent. Verified green (build ran 92/92, ~1m29s).
+Keyless upgrade (Workload Identity Federation) is a ~5-line workflow swap, noted in the
+workflow header.
 
-- **CI on PRs** — GitHub Actions: SQLFluff lint (secret-free, can land first) + `dbt
-  build` against BigQuery (needs the secret). Surfaces broken models/tests before merge.
-- **Scheduling** — post-close cron: `ingest → dbt build --target prod → export_snapshot
-  → push` (auto-redeploys the live Streamlit app + can re-publish docs). Needs the BQ
-  secret + the FRED API key secret + a push-back token.
+## IMMEDIATE next step — scheduling (the last ops piece)
 
-SQLFluff CI can start without the secret; `dbt build` CI + scheduling wait on it.
+**Scheduled post-close pipeline** (GitHub Actions cron): `ingest → dbt build --target
+prod → export_snapshot → git push` — refreshes prod marts then the live demo snapshot
+(Streamlit auto-redeploys; docs can re-publish too). Needs: the `BQ_SA_KEY` secret
+(already set), a **`FRED_API_KEY`** secret (for ingestion), and a push-back token/perms
+so the Action can commit the regenerated `app/snapshot/*.parquet`. Optional polish:
+SQLFluff lint (its dbt templater needs warehouse creds, so fold it into the CI job).
 
 ## Strategic direction (agreed) — two capstones make it "a living data product"
 

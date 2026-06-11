@@ -185,12 +185,14 @@ Captured design, deferred build:
   free personal tier). Deliberate **demo (sample portfolio) vs. real (private)** split so
   the public deploy never shows real financial data. Real holdings force the multi-asset
   work — they ship as one "make it real" milestone.
-- **Ops** — **public deploy is live** (Streamlit Community Cloud reads the committed
+- **Ops** — **live:** the public dashboard (Streamlit Community Cloud reads the committed
   snapshot via the `data.py` `SOURCE` switch; `app/export_snapshot.py` regenerates it),
-  and **dbt docs/lineage are live** on GitHub Pages
-  ([timurakhtemov.github.io/Anchor](https://timurakhtemov.github.io/Anchor/), published
-  by `.github/workflows/docs.yml`). Remaining: CI (`dbt build` + SQLFluff on PRs) and a
-  scheduled post-close `ingest → dbt build --target prod → export_snapshot → push`.
+  **dbt docs/lineage** on GitHub Pages
+  ([timurakhtemov.github.io/Anchor](https://timurakhtemov.github.io/Anchor/),
+  `.github/workflows/docs.yml`), and **CI** (`.github/workflows/ci.yml` — `dbt build` +
+  all 92 tests into an isolated `dbt_ci` dataset on every PR/push). Remaining: a
+  scheduled post-close `ingest → dbt build --target prod → export_snapshot → push`, and
+  optional SQLFluff lint.
 
 ---
 
