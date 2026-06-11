@@ -145,9 +145,12 @@ Captured design, deferred build:
   ETFs (market axis) and bonds (duration/credit axes) absorbed by the same generic
   `benchmark_type` design; the "sector" tier generalizing into an asset-class-specific
   context tier.
-- **Dynamic holdings ingestion** — a `holdings` bronze table (ticker, quantity, cost
-  basis) from Robinhood/Fidelity, replacing the static watchlist. The long-format bronze
-  design and config-driven ticker list make this a config swap, not a rewrite.
+- **Dynamic holdings ingestion** (`docs/holdings_ingestion.md`) — a `holdings` bronze
+  table from real brokerage data, replacing the static watchlist. Connection path:
+  CSV-export first, then **SnapTrade** for a live Fidelity link (read-only; Fidelity GA;
+  free personal tier). Deliberate **demo (sample portfolio) vs. real (private)** split so
+  the public deploy never shows real financial data. Real holdings force the multi-asset
+  work — they ship as one "make it real" milestone.
 - **Streamlit serve layer** — three-tier top-down dashboard reading directly from the marts.
 
 ---
