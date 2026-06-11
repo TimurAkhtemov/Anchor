@@ -1,0 +1,10 @@
+# Anchor visual identity. Calm, nautical-but-professional financial palette:
+# deep teal accent on near-white, slate text, light slate cards.
+[theme]
+base = "light"
+primaryColor = "#0e7490"            # deep teal — accent (widgets, focus)
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f1f5f9" # slate-100 — cards / containers
+textColor = "#0f172a"                # slate-900
+font = "sans serif"
+baseRadius = "medium"
