@@ -1,0 +1,70 @@
+# CI: build + test the dbt project against BigQuery on every PR and push to main.
+#
+# This is the "does this change break the warehouse" gate — it compiles every
+# model, runs them into an isolated throwaway dataset (dbt_ci), and runs all 92
+# data tests. Green here means the gold contract still holds.
+#
+# Auth: reads the BigQuery service-account JSON from the BQ_SA_KEY repo secret.
+# Until that secret exists the build is SKIPPED (the run stays green with a
+# warning), so this groundwork doesn't leave a red X on main. Enable it with:
+#   gh secret set BQ_SA_KEY < ~/.dbt/anchor-bigquery-key.json
+#
+# (To go keyless later, swap the "Write key" step for Workload Identity
+# Federation via google-github-actions/auth and set method: oauth in ci/profiles.yml.)
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  DBT_PROFILES_DIR: ci   # use ci/profiles.yml (target: ci -> dataset dbt_ci)
+
+jobs:
+  # Skip the build until the BQ secret is configured, so the workflow is green
+  # (not red) in the meantime.
+  guard:
+    runs-on: ubuntu-latest
+    outputs:
+      has_key: ${{ steps.check.outputs.has_key }}
+    steps:
+      - id: check
+        env:
+          BQ_SA_KEY: ${{ secrets.BQ_SA_KEY }}
+        run: |
+          if [ -z "$BQ_SA_KEY" ]; then
+            echo "has_key=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::BQ_SA_KEY secret not set — skipping dbt build. Add it to enable CI."
+          else
+            echo "has_key=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: guard
+    if: needs.guard.outputs.has_key == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dbt
+        run: pip install "dbt-bigquery~=1.11.0"
+
+      - name: Write BigQuery key
+        # via env (not inline) to avoid leaking/injecting the secret into the shell
+        env:
+          BQ_SA_KEY: ${{ secrets.BQ_SA_KEY }}
+        run: printf '%s' "$BQ_SA_KEY" > /tmp/anchor-bq-key.json
+
+      - name: Install dbt packages
+        run: dbt deps
+
+      - name: Build + test
+        run: dbt build --target ci
