@@ -40,8 +40,18 @@ dbt run --select staging         # staging models only
 dbt run --select marts           # gold/mart models only
 dbt test                         # run all tests
 dbt test --select stg_fred__observations  # single model tests
-dbt build                        # run + test together
+dbt build                        # run + test together (dev sandbox)
+dbt build --target prod          # materialize the named prod datasets (anchor_*)
+
+# Serve layer (Streamlit dashboard, reads anchor_marts via the data seam)
+streamlit run app/app.py
+python app/export_snapshot.py    # refresh the committed snapshot the live demo reads
+
+# Pipeline steps (tool-agnostic; the Makefile is what Dagster will wrap as assets)
+make ingest | make build-prod | make snapshot | make refresh
 ```
+
+Live: dashboard → anchor-dashboard.streamlit.app · dbt docs → timurakhtemov.github.io/Anchor
 
 ## Data sources
 
@@ -60,10 +70,11 @@ dbt build                        # run + test together
 - `stg_fred__series`, `stg_fred__observations`
 - `stg_yfinance__tickers`, `stg_yfinance__prices`
 
-**Gold / marts** (`models/marts/`) — relationship-framed outputs the dashboard reads. *Not yet built.*
-- Must produce: macro indicators with current value + delta + sparkline series
-- Must produce: sector ETF performance contextualized against macro regime
-- Must produce: holding % change paired with its sector's % change as a single output (not two independent cuts the UI joins)
+**Gold / marts** (`models/marts/`) — relationship-framed outputs the dashboard reads. **Built, tested, deployed.**
+- `macro_indicators` (cards) + `macro_trend` (sparklines) + `macro_regime` (regime banner)
+- `sector_performance` — sector ETF performance contextualized against the macro regime
+- `holdings_benchmarks` — holding % paired with each benchmark % as one row (not two cuts the UI joins)
+- `ticker_trend` — sparkline series for every ticker
 
 ## Benchmarking design (two-axis)
 

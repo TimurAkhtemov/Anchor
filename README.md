@@ -190,9 +190,12 @@ Captured design, deferred build:
   **dbt docs/lineage** on GitHub Pages
   ([timurakhtemov.github.io/Anchor](https://timurakhtemov.github.io/Anchor/),
   `.github/workflows/docs.yml`), and **CI** (`.github/workflows/ci.yml` — `dbt build` +
-  all 92 tests into an isolated `dbt_ci` dataset on every PR/push). Remaining: a
-  scheduled post-close `ingest → dbt build --target prod → export_snapshot → push`, and
-  optional SQLFluff lint.
+  all 92 tests into an isolated `dbt_ci` dataset on every PR/push). Remaining:
+  **orchestration via Dagster** (`dagster-dbt`: ingestion + dbt models + snapshot export
+  as one software-defined asset graph, daily schedule) — chosen over a GitHub Actions
+  cron for the asset-native lineage and as a stronger AE signal. Pipeline steps live in
+  a tool-agnostic `Makefile` so the orchestrator is a swap, not a rewrite. Later: data
+  quality (dbt source-freshness) + optional SQLFluff lint.
 
 ---
 

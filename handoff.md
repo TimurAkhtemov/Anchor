@@ -1,9 +1,10 @@
 # Anchor — Session Handoff
 
-_Last updated: 2026-06-11 (serve layer + prod datasets). The **`README.md` is the
-canonical project doc** — architecture, model map, design decisions, limitations,
-roadmap. Read it first. This file is just the lean "current state + what's next"
-pointer. Also see `CLAUDE.md` (working style) and `docs/` (deferred roadmaps)._
+_Last updated: 2026-06-11 (serve layer + deploy + dbt docs + CI all live; next =
+Dagster orchestration). The **`README.md` is the canonical project doc** —
+architecture, model map, design decisions, limitations, roadmap. Read it first. This
+file is just the lean "current state + what's next" pointer. Also see `CLAUDE.md`
+(working style) and `docs/` (deferred roadmaps)._
 
 ## State of the world
 
@@ -63,29 +64,58 @@ stays green) if the secret is ever absent. Verified green (build ran 92/92, ~1m2
 Keyless upgrade (Workload Identity Federation) is a ~5-line workflow swap, noted in the
 workflow header.
 
-## IMMEDIATE next step — scheduling (the last ops piece)
+## IMMEDIATE next step — Dagster orchestration (dagster-dbt)
 
-**Scheduled post-close pipeline** (GitHub Actions cron): `ingest → dbt build --target
-prod → export_snapshot → git push` — refreshes prod marts then the live demo snapshot
-(Streamlit auto-redeploys; docs can re-publish too). Needs: the `BQ_SA_KEY` secret
-(already set), a **`FRED_API_KEY`** secret (for ingestion), and a push-back token/perms
-so the Action can commit the regenerated `app/snapshot/*.parquet`. Optional polish:
-SQLFluff lint (its dbt templater needs warehouse creds, so fold it into the CI job).
+**Decision (this session): orchestrate with Dagster, not a GitHub Actions cron.** Why:
+targeting AE *startup* roles — Dagster is the mainstream, asset-native orchestrator and
+a stronger signal than cron; Airflow was rejected as too heavy (needs hosting, overkill
+for one daily linear job). The GHA cron (`refresh.yml`) was **built then dropped** this
+session in favor of this. **CI stays on GitHub Actions** (CI ≠ orchestration). The
+`Makefile` (`ingest`/`build-prod`/`snapshot`/`refresh`) was kept — its targets are the
+tool-agnostic steps Dagster wraps as assets (the whole point of that decoupling).
+
+**The build (run local `dagster dev` first):**
+- `pip install dagster dagster-dbt dagster-webserver` (add to a new `orchestration/` or
+  `dagster/` project + its own requirements).
+- **dbt as assets:** `dagster-dbt` `@dbt_assets` loads every model from the dbt manifest
+  as a Dagster asset (lineage auto-derived). Point it at this project + the prod target.
+- **Ingestion as upstream assets:** `@asset` wrappers for `ingest_fred` / `ingest_yfinance`
+  (the bronze sources the dbt staging models read) — call the functions in
+  `ingestion/*.py` (or shell to `make ingest`).
+- **Snapshot as downstream asset:** `@asset` (downstream of the marts) that runs
+  `app/export_snapshot.py` → `app/snapshot/*.parquet`.
+- **Schedule:** a daily (post-close) schedule materializing the full graph.
+- **The payoff artifact:** one unified asset/lineage graph FRED/yfinance → bronze →
+  staging → marts → snapshot — which plain dbt docs can't show (it stops at the dbt
+  boundary). Screenshot it; that's the portfolio win.
+
+**Hosting reality (Dagster is NOT serverless like cron — it needs a host):**
+- v1 = local `dagster dev` (free, immediate, gives the asset-graph artifact; doesn't run
+  unattended).
+- Live scheduled story = **Dagster+ Serverless** (free tier; reuses the same code) — do
+  as a follow-up after the local graph works.
+- Hybrid (GHA cron runs `dagster job execute`) is possible but defeats the "real
+  orchestrator" point.
+
+**Gotcha:** the ingestion scripts hardcode a local keyfile path but fall back to ADC
+(`GOOGLE_APPLICATION_CREDENTIALS`) when it's absent — fine for assets. Secrets
+`BQ_SA_KEY` + `FRED_API_KEY` remain set (FRED now unused until Dagster-in-cloud).
+Optional later polish: SQLFluff lint folded into CI.
 
 ## Strategic direction (agreed) — two capstones make it "a living data product"
 
 The dbt+dashboard is functionally complete but reads as *modeling-only*; the value is
 turning it into a running product. After Streamlit:
 
-1. **Ops capstone:** deploy live (Streamlit Community Cloud) → orchestrate/schedule
-   (GitHub Actions or Dagster/Prefect: ingest → dbt build, post-close) → CI on PRs
-   (`dbt build` + SQLFluff) → data-quality (dbt source-freshness; maybe Elementary)
-   → dbt docs/lineage on GitHub Pages.
+1. **Ops capstone:** ✅ live deploy (Streamlit Cloud) · ✅ dbt docs/lineage (Pages) ·
+   ✅ CI on PRs (`dbt build`, GHA) · ⏳ **orchestration = Dagster** (next) · later:
+   data-quality (dbt source-freshness; maybe Elementary), SQLFluff lint.
 2. **"Make it real" capstone:** dynamic holdings (real portfolio) → multi-asset. These
    are **coupled** — real holdings contain ETFs/bonds/cash, which force the multi-asset
    work and the `cap_tier` null→'Small' fix.
 
-Cheap, high-impact wins first: **live deploy, dbt docs, CI**.
+Most of the ops capstone is shipped; Dagster orchestration is the remaining piece, then
+the "make it real" capstone is the big value-add.
 
 ## Roadmap docs (designed, not built)
 
