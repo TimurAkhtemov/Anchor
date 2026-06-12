@@ -9,8 +9,8 @@ Run locally (needs BigQuery creds) whenever the marts change:
     GOOGLE_APPLICATION_CREDENTIALS=~/.dbt/anchor-bigquery-key.json \
         python app/export_snapshot.py
 
-In the eventual ops capstone this becomes one step of the scheduled job:
-    ingest -> dbt build --target prod -> export_snapshot -> git push -> redeploy.
+In the ops capstone this is the terminal step of the scheduled job, downstream
+of the marts: ingest -> dbt build --target prod -> export_snapshot -> git push.
 """
 
 from __future__ import annotations
@@ -35,9 +35,12 @@ TABLES = [
 ]
 
 
-def main() -> None:
+def export_snapshot(client: bigquery.Client) -> dict[str, int]:
+    """Read each prod mart and write it to app/snapshot/<table>.parquet, returning
+    {table: row_count}. Takes an injected client so the standalone CLI and the
+    Dagster snapshot asset share one implementation."""
     SNAPSHOT_DIR.mkdir(exist_ok=True)
-    client = bigquery.Client(project=PROJECT)
+    counts: dict[str, int] = {}
     for table in TABLES:
         df = client.query(f"select * from `{PROJECT}.{MARTS_DATASET}.{table}`").to_dataframe()
         # BigQuery DATE columns arrive as the db-dtypes 'dbdate' extension type,
@@ -49,7 +52,15 @@ def main() -> None:
                 df[col] = pd.to_datetime(df[col])
         out = SNAPSHOT_DIR / f"{table}.parquet"
         df.to_parquet(out, index=False)
-        print(f"  {table:22s} {len(df):>5} rows -> {out.relative_to(SNAPSHOT_DIR.parent.parent)}")
+        counts[table] = len(df)
+    return counts
+
+
+def main() -> None:
+    client = bigquery.Client(project=PROJECT)
+    counts = export_snapshot(client)
+    for table, n in counts.items():
+        print(f"  {table:22s} {n:>5} rows -> app/snapshot/{table}.parquet")
     print(f"Snapshot written to {SNAPSHOT_DIR}")
 
 
