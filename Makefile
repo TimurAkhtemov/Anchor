@@ -35,5 +35,6 @@ dagster:  ## Launch the Dagster UI locally (asset graph at http://localhost:3000
 	@mkdir -p $(DAGSTER_HOME)
 	DAGSTER_HOME=$(DAGSTER_HOME) \
 	GOOGLE_APPLICATION_CREDENTIALS=$(HOME)/.dbt/anchor-bigquery-key.json \
+	DBT_PROFILES_DIR=$(HOME)/.dbt \
 	PYTHONPATH=orchestration \
 	dagster dev -m anchor_orchestration
