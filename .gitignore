@@ -9,6 +9,11 @@ venv/
 codegen.sql
 temp_codegen.sql
 
+# orchestration (Dagster) artifacts
+orchestration/.dagster_home/
+.tmp_dagster_home_*/
+*.egg-info/
+
 # serve-layer / tooling artifacts
 __pycache__/
 .playwright-mcp/

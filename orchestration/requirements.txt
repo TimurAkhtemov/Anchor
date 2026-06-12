@@ -1,0 +1,6 @@
+# Dagster code-location deps — installed into the project venv alongside dbt.
+# Pinned to the versions verified against dbt-core 1.11 in this repo.
+dagster==1.13.8
+dagster-dbt==0.29.8
+dagster-gcp==0.29.8
+dagster-webserver==1.13.8

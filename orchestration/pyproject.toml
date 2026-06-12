@@ -1,0 +1,22 @@
+[project]
+name = "anchor-orchestration"
+version = "0.1.0"
+description = "Dagster code location orchestrating the Anchor pipeline (FRED/yfinance -> dbt -> snapshot)."
+requires-python = ">=3.12"
+dependencies = [
+    "dagster",
+    "dagster-dbt",
+    "dagster-gcp",
+    "dagster-webserver",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["anchor_orchestration"]
+
+[tool.dagster]
+module_name = "anchor_orchestration"
+code_location_name = "anchor"

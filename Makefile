@@ -9,7 +9,9 @@
 # (or the local keyfile); FRED ingestion reads FRED_API_KEY. dbt target/profile
 # is resolved by the caller's env (local ~/.dbt vs CI's DBT_PROFILES_DIR=ci).
 
-.PHONY: help ingest deps build-prod snapshot refresh
+.PHONY: help ingest deps build-prod snapshot refresh dagster
+
+DAGSTER_HOME ?= $(CURDIR)/orchestration/.dagster_home
 
 help:  ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-12s %s\n", $$1, $$2}'
@@ -28,3 +30,10 @@ snapshot:  ## Export prod marts -> committed parquet (app/snapshot/)
 	python app/export_snapshot.py
 
 refresh: ingest build-prod snapshot  ## Full daily pipeline: ingest -> build -> snapshot
+
+dagster:  ## Launch the Dagster UI locally (asset graph at http://localhost:3000)
+	@mkdir -p $(DAGSTER_HOME)
+	DAGSTER_HOME=$(DAGSTER_HOME) \
+	GOOGLE_APPLICATION_CREDENTIALS=$(HOME)/.dbt/anchor-bigquery-key.json \
+	PYTHONPATH=orchestration \
+	dagster dev -m anchor_orchestration
