@@ -13,9 +13,10 @@ treatment of limitations — not just a working chart.
 > **Status:** bronze → silver → gold → serve is built, tested, and green (92/92 dbt
 > nodes), and **deployed live: [anchor-dashboard.streamlit.app](https://anchor-dashboard.streamlit.app)**.
 > The dashboard reads the gold marts through a swappable data seam (live BigQuery
-> locally, committed snapshot in the cloud). Orchestration/CI, dynamic portfolio
-> ingestion, and multi-asset benchmarking are designed and documented (`docs/`) but
-> not yet built.
+> locally, committed snapshot in the cloud). **CI** (dbt build + tests on every PR),
+> **dbt docs/lineage**, and **orchestration** (a Dagster `dagster-dbt` asset graph,
+> `orchestration/`) are built; dynamic portfolio ingestion and multi-asset benchmarking
+> are designed and documented (`docs/`) but not yet built.
 
 ---
 
@@ -189,13 +190,17 @@ Captured design, deferred build:
   snapshot via the `data.py` `SOURCE` switch; `app/export_snapshot.py` regenerates it),
   **dbt docs/lineage** on GitHub Pages
   ([timurakhtemov.github.io/Anchor](https://timurakhtemov.github.io/Anchor/),
-  `.github/workflows/docs.yml`), and **CI** (`.github/workflows/ci.yml` — `dbt build` +
-  all 92 tests into an isolated `dbt_ci` dataset on every PR/push). Remaining:
-  **orchestration via Dagster** (`dagster-dbt`: ingestion + dbt models + snapshot export
-  as one software-defined asset graph, daily schedule) — chosen over a GitHub Actions
-  cron for the asset-native lineage and as a stronger AE signal. Pipeline steps live in
-  a tool-agnostic `Makefile` so the orchestrator is a swap, not a rewrite. Later: data
-  quality (dbt source-freshness) + optional SQLFluff lint.
+  `.github/workflows/docs.yml`), **CI** (`.github/workflows/ci.yml` — `dbt build` +
+  all 92 tests into an isolated `dbt_ci` dataset on every PR/push), and **orchestration
+  via Dagster** (`orchestration/` — `dagster-dbt`: FRED/yfinance ingestion + every dbt
+  model + the snapshot export as **one software-defined asset graph**, daily post-close
+  schedule). A `DagsterDbtTranslator` maps each dbt source onto the bronze ingestion
+  assets, so the graph is *continuous* bronze → silver → gold → serve — the cross-boundary
+  lineage plain dbt docs can't show. Chosen over a GitHub Actions cron for the asset-native
+  lineage and as a stronger AE signal; pipeline steps live in a tool-agnostic `Makefile`
+  so the orchestrator is a swap, not a rewrite. Run locally with `make dagster`. Remaining:
+  **Dagster+ Serverless** for the unattended scheduled run (same code), data quality
+  (dbt source-freshness), optional SQLFluff lint.
 
 ---
 
@@ -218,6 +223,10 @@ dbt build --target prod    # prod: materialize into the anchor_* datasets
 # 3. serve layer (reads anchor_marts)
 pip install -r app/requirements.txt
 streamlit run app/app.py
+
+# 4. orchestration (optional) — the whole pipeline as a Dagster asset graph
+pip install -r orchestration/requirements.txt
+make dagster               # UI at localhost:3000; materialize ingest -> dbt -> snapshot
 ```
 
 Useful selectors: `dbt build --select staging`, `dbt build --select marts`,
@@ -231,6 +240,7 @@ Useful selectors: `dbt build --select staging`, `dbt build --select marts`,
 - **Transformation:** dbt (Fusion 2.0), with `dbt_utils` + `codegen`
 - **Ingestion:** Python — FRED REST via `requests`, `yfinance`, `pandas` → BigQuery, python-dotenv
 - **Serve:** Streamlit + Altair, reading the marts through a cached data seam
+- **Orchestration:** Dagster (`dagster-dbt`) — ingestion + dbt + snapshot as one asset graph
 
 ## Repo layout
 
@@ -244,6 +254,7 @@ macros/       ahead_behind, three_way_state, generate_schema_name (dev/prod rout
 seeds/        benchmark_etfs.csv (the benchmark axis mapping)
 tests/        singular guardrail tests
 app/          Streamlit serve layer — app.py (page), data.py (seam), ui.py (visuals)
+orchestration/  Dagster code location — ingestion + dbt + snapshot as one asset graph
 .streamlit/   theme config
 docs/         roadmap design docs (ingestion, multi-asset)
 ```
