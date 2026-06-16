@@ -217,10 +217,12 @@ pip install -r ingestion/requirements.txt
 python ingestion/ingest_fred.py
 python ingestion/ingest_yfinance.py
 
-# 2. dbt packages + build + test (the dbt project lives in transformation/)
-dbt deps --project-dir transformation
-dbt build --project-dir transformation                # dev: into the personal sandbox
-dbt build --project-dir transformation --target prod  # prod: into the anchor_* datasets
+# 2. dbt packages + build + test (run from the dbt project in transformation/)
+cd transformation
+dbt deps
+dbt build                  # dev: into the personal sandbox
+dbt build --target prod    # prod: into the anchor_* datasets
+cd ..
 
 # 3. serve layer (reads anchor_marts)
 pip install -r app/requirements.txt
@@ -231,9 +233,9 @@ pip install -r orchestration/requirements.txt
 make dagster               # UI at localhost:3000; materialize ingest -> dbt -> snapshot
 ```
 
-Run dbt from `transformation/` (or pass `--project-dir transformation`, as above). Useful
-selectors: `dbt build --select staging`, `dbt build --select marts`,
-`dbt show --inline "select * from {{ ref('holdings_benchmarks') }}" --limit 20`.
+Run dbt from inside `transformation/` (local dbt is dbt-fusion, whose `--project-dir` flag
+mishandles seeds — so `cd` in first). Useful selectors: `dbt build --select staging`,
+`dbt build --select marts`, `dbt show --inline "select * from {{ ref('holdings_benchmarks') }}" --limit 20`.
 
 ---
 

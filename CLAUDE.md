@@ -34,14 +34,16 @@ The user is learning analytics engineering as we build, and wants to hold the wh
 python ingestion/ingest_fred.py
 python ingestion/ingest_yfinance.py
 
-# dbt (the project lives in transformation/ — pass --project-dir, or cd transformation first)
-dbt run --project-dir transformation                     # build all models
-dbt run --project-dir transformation --select staging    # staging models only
-dbt run --project-dir transformation --select marts      # gold/mart models only
-dbt test --project-dir transformation                    # run all tests
-dbt test --project-dir transformation --select stg_fred__observations  # single model tests
-dbt build --project-dir transformation                   # run + test together (dev sandbox)
-dbt build --project-dir transformation --target prod     # materialize the prod datasets (anchor_*)
+# dbt — cd into transformation/ first (the dbt project dir). Local engine = dbt-fusion
+# (~/.local/bin/dbt); CI uses dbt-core 1.11. Run from the project dir, NOT via
+# --project-dir: fusion mishandles seed paths under --project-dir.
+cd transformation
+dbt run                          # build all models
+dbt run --select staging         # staging models only
+dbt run --select marts           # gold/mart models only
+dbt test                         # run all tests
+dbt build                        # run + test together (dev sandbox)
+dbt build --target prod          # materialize the prod datasets (anchor_*)
 
 # Serve layer (Streamlit dashboard, reads anchor_marts via the data seam)
 streamlit run app/app.py

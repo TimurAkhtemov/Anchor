@@ -15,8 +15,11 @@ The full `macro → sector → holdings` spine is built, verified against real d
 now rendered by a Streamlit dashboard.
 
 **Repo layout (2026-06-16):** the dbt project lives in `transformation/` (moved out of the
-repo root); `ingestion/`, `app/`, `orchestration/` are siblings. dbt runs with
-`--project-dir transformation` — the Makefile, CI, and Dagster already pass it.
+repo root); `ingestion/`, `app/`, `orchestration/` are siblings. **dbt engine:** local work
++ Dagster + the dbt-MCP use **dbt-fusion** (run from *inside* transformation/ — the
+Makefile/Dagster cd in; fusion's `--project-dir` mishandles seed paths); **CI uses dbt-core
+1.11** on its own isolated runner. dbt-core and dbt-fusion can't share
+`transformation/dbt_packages/`, so keep one engine locally (fusion).
 
 Gold marts (all in `transformation/models/marts/`):
 - **Macro:** `macro_indicators` (cards), `macro_trend` (sparklines), `macro_regime` (regime banner)
@@ -117,9 +120,14 @@ only fires locally) and the `gcp_credentials` secret wired to the `BigQueryResou
 step (Dagster materializes the parquet, not the commit). Secrets `BQ_SA_KEY` +
 `FRED_API_KEY` remain set.
 
-**Gotcha:** the `dbt` executable on PATH is `dbt-fusion 2.0 preview`; it parses/builds
-fine on `--target prod` and emits a harmless deferral-manifest 404 warning. Optional later
-polish: SQLFluff lint folded into CI.
+**Fusion gotchas (local engine = dbt-fusion 2.0 preview at `~/.local/bin/dbt`):**
+(1) Run it from *inside* `transformation/` — its `--project-dir` flag mishandles seed file
+paths, so the `benchmark_etfs` seed fails from the repo root (the Makefile `cd`s in; Dagster
+runs dbt from the project dir; the dbt-MCP sets `DBT_PROJECT_DIR`). (2) dbt-core and
+dbt-fusion **cannot share `transformation/dbt_packages/`** — each re-creates `pkg 2`/`pkg 3`
+dirs and breaks the other, so everything LOCAL is fusion and CI is core on its own runner.
+(3) harmless deferral-manifest 404 warning. `make build-prod` (fusion) = 92/92 green.
+Optional later polish: SQLFluff lint folded into CI.
 
 ## Strategic direction (agreed) — two capstones make it "a living data product"
 

@@ -11,6 +11,10 @@
 
 .PHONY: help ingest deps build-prod snapshot refresh dagster
 
+# dbt engine for LOCAL work = dbt-fusion (the global binary). CI uses dbt-core
+# 1.11 as the stable gate (see .github/workflows/ci.yml). Override with `make DBT=...`.
+DBT ?= $(HOME)/.local/bin/dbt
+
 DAGSTER_HOME ?= $(CURDIR)/orchestration/.dagster_home
 
 help:  ## List targets
@@ -21,10 +25,10 @@ ingest:  ## Pull bronze: FRED + yfinance -> BigQuery (full refresh)
 	python ingestion/ingest_yfinance.py
 
 deps:  ## Install dbt packages
-	dbt deps --project-dir transformation
+	cd transformation && $(DBT) deps
 
 build-prod: deps  ## dbt build + test into the prod marts (anchor_* datasets)
-	dbt build --project-dir transformation --target prod
+	cd transformation && $(DBT) build --target prod
 
 snapshot:  ## Export prod marts -> committed parquet (app/snapshot/)
 	python app/export_snapshot.py
@@ -36,5 +40,6 @@ dagster:  ## Launch the Dagster UI locally (asset graph at http://localhost:3000
 	DAGSTER_HOME=$(DAGSTER_HOME) \
 	GOOGLE_APPLICATION_CREDENTIALS=$(HOME)/.dbt/anchor-bigquery-key.json \
 	DBT_PROFILES_DIR=$(HOME)/.dbt \
+	PATH=$(dir $(DBT)):$$PATH \
 	PYTHONPATH=orchestration \
 	dagster dev -m anchor_orchestration
