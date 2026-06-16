@@ -1,6 +1,7 @@
 # Anchor — Session Handoff
 
-_Last updated: 2026-06-12 (Dagster orchestration built + verified end-to-end; next =
+_Last updated: 2026-06-16 (Dagster orchestration built; repo restructured — dbt now lives
+in `transformation/`; CI + Pages bumped to Node-24 actions, all green on remote. Next =
 Dagster+ Serverless for the unattended scheduled run). The **`README.md` is the
 canonical project doc** —
 architecture, model map, design decisions, limitations, roadmap. Read it first. This
@@ -34,7 +35,7 @@ not the serve source); `dbt build --target prod` materializes the named contract
 dashboard reads `anchor_marts`.** A `prod` target was added to `~/.dbt/profiles.yml`
 (dataset `anchor`, same SA key).
 
-**Serve layer (new this session) — `app/`.** Single top-down page (macro → sectors →
+**Serve layer — `app/`.** Single top-down page (macro → sectors →
 holdings), live from `anchor_marts`. `app/data.py` is the data seam (cached `_read()`
 choke point + a `SOURCE` switch for the future snapshot path — no UI knows the source);
 `app/ui.py` is the shared visual vocabulary; `.streamlit/config.toml` is the teal theme.

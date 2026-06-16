@@ -17,6 +17,7 @@ orchestration/.dagster_home/
 # serve-layer / tooling artifacts
 __pycache__/
 .playwright-mcp/
+.vscode/
 anchor-v1.png
 *.png
 .user.yml
