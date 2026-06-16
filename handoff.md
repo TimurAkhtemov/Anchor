@@ -57,8 +57,8 @@ snapshot (`app/snapshot/*.parquet`) — no GCP creds. `app/data.py` auto-detects
 static site `site/index.html` (`dbt docs generate --static --project-dir transformation
 --target prod`). Refresh = regenerate, copy `transformation/target/static_index.html` →
 `site/index.html`, push. Pages source is
-set to "GitHub Actions". (Node 20 action-deprecation warning is non-blocking; bump
-action versions when convenient.)
+set to "GitHub Actions". (Action versions bumped to Node-24 runtimes 2026-06-16:
+checkout@v6, setup-python@v6, configure-pages@v6, upload-pages-artifact@v5, deploy-pages@v5.)
 
 ## DONE — CI
 
