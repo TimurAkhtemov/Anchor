@@ -110,7 +110,26 @@ resource config, not code. Decision made Socratically this session.
 `PYTHONPATH=orchestration`. `prepare_if_dev()` regenerates the dbt manifest under
 `dagster dev` so the asset graph never drifts.
 
-## IMMEDIATE next step — Dagster+ Serverless (unattended schedule)
+## Recommended next session (decided 2026-06-16) — a dbt-depth pass
+
+Goal: make the project more impressive *on the dbt side*. Highest-ROI, and most needs no
+new data — these are senior-dbt patterns currently missing:
+- **Incremental model** — prices grow daily; textbook `is_incremental()` + `unique_key`.
+- **Snapshot (SCD2)** — `transformation/snapshots/` is empty (just `.gitkeep`); snapshot
+  ticker `sector` / `market_cap` over time.
+- **Exposures** — declare the Streamlit dashboard + the snapshot as consumers so lineage
+  shows model → dashboard.
+- **Source freshness** — `loaded_at` thresholds on the FRED/yfinance sources (designed in
+  `docs/ingestion_roadmap.md`).
+- **Model contract** — enforce column types/constraints on `holdings_benchmarks` (the
+  load-bearing mart).
+
+Why this first: Serverless (below) is ops/hosting — zero dbt. Multi-asset is the deeper
+modeling lift but coupled to holdings ingestion (plumbing). The dbt-depth pass is fast,
+high-signal, and independent. **Sequence: dbt-depth → multi-asset (make-it-real) →
+Serverless (deploy last, so the live schedule showcases the fuller graph).**
+
+## Later — Dagster+ Serverless (unattended schedule)
 
 Local `dagster dev` gives the asset-graph artifact but doesn't run unattended (laptop).
 **Dagster+ Serverless** (free tier, same code) is the live scheduled story. Needs: a
