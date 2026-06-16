@@ -49,7 +49,7 @@ namespace (`anchor_staging` / `anchor_intermediate` / `anchor_marts` / `anchor_s
 via `dbt build --target prod`; local dev runs collapse into a single personal sandbox
 schema. The serve layer (and any future scheduled build) reads the stable
 `anchor_marts` contract, never a developer sandbox. Routing lives in
-`macros/generate_schema_name.sql` (the dbt-fundamentals custom-schema pattern).
+`transformation/macros/generate_schema_name.sql` (the dbt-fundamentals custom-schema pattern).
 
 ---
 
@@ -67,6 +67,8 @@ cap tiers, which is the clearest one-glance proof the two-axis design does somet
 ---
 
 ## The dbt model layers
+
+_Paths below are relative to `transformation/`, the dbt project root._
 
 **Staging** (`models/staging/`) — silver. Rename / typecast only, no business logic.
 - `stg_fred__series`, `stg_fred__observations`, `stg_yfinance__tickers`, `stg_yfinance__prices`
@@ -215,10 +217,10 @@ pip install -r ingestion/requirements.txt
 python ingestion/ingest_fred.py
 python ingestion/ingest_yfinance.py
 
-# 2. dbt packages + build + test
-dbt deps
-dbt build                  # dev: run + test all models into the personal sandbox
-dbt build --target prod    # prod: materialize into the anchor_* datasets
+# 2. dbt packages + build + test (the dbt project lives in transformation/)
+dbt deps --project-dir transformation
+dbt build --project-dir transformation                # dev: into the personal sandbox
+dbt build --project-dir transformation --target prod  # prod: into the anchor_* datasets
 
 # 3. serve layer (reads anchor_marts)
 pip install -r app/requirements.txt
@@ -229,7 +231,8 @@ pip install -r orchestration/requirements.txt
 make dagster               # UI at localhost:3000; materialize ingest -> dbt -> snapshot
 ```
 
-Useful selectors: `dbt build --select staging`, `dbt build --select marts`,
+Run dbt from `transformation/` (or pass `--project-dir transformation`, as above). Useful
+selectors: `dbt build --select staging`, `dbt build --select marts`,
 `dbt show --inline "select * from {{ ref('holdings_benchmarks') }}" --limit 20`.
 
 ---
@@ -245,16 +248,15 @@ Useful selectors: `dbt build --select staging`, `dbt build --select marts`,
 ## Repo layout
 
 ```
-ingestion/    Python bronze-ingestion scripts (FRED, yfinance)
-models/
-  staging/    silver — rename/typecast
-  intermediate/  shared computation
-  marts/      gold — the served, relationship-framed tier
-macros/       ahead_behind, three_way_state, generate_schema_name (dev/prod routing)
-seeds/        benchmark_etfs.csv (the benchmark axis mapping)
-tests/        singular guardrail tests
-app/          Streamlit serve layer — app.py (page), data.py (seam), ui.py (visuals)
+ingestion/      Python bronze-ingestion scripts (FRED, yfinance)
+transformation/ the dbt project:
+  models/       staging (silver) / intermediate / marts (gold)
+  macros/       ahead_behind, three_way_state, generate_schema_name (dev/prod routing)
+  seeds/        benchmark_etfs.csv (the benchmark axis mapping)
+  tests/        singular guardrail tests
 orchestration/  Dagster code location — ingestion + dbt + snapshot as one asset graph
-.streamlit/   theme config
-docs/         roadmap design docs (ingestion, multi-asset)
+app/            Streamlit serve layer — app.py (page), data.py (seam), ui.py (visuals)
+ci/             dbt CI profile (used by .github/workflows/ci.yml)
+.streamlit/     theme config
+docs/           design docs + the Dagster study review
 ```

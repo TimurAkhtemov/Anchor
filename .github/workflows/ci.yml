@@ -64,7 +64,7 @@ jobs:
         run: printf '%s' "$BQ_SA_KEY" > /tmp/anchor-bq-key.json
 
       - name: Install dbt packages
-        run: dbt deps
+        run: dbt deps --project-dir transformation
 
       - name: Build + test
-        run: dbt build --target ci
+        run: dbt build --project-dir transformation --target ci

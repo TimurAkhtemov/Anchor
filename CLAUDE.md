@@ -34,14 +34,14 @@ The user is learning analytics engineering as we build, and wants to hold the wh
 python ingestion/ingest_fred.py
 python ingestion/ingest_yfinance.py
 
-# dbt
-dbt run                          # build all models
-dbt run --select staging         # staging models only
-dbt run --select marts           # gold/mart models only
-dbt test                         # run all tests
-dbt test --select stg_fred__observations  # single model tests
-dbt build                        # run + test together (dev sandbox)
-dbt build --target prod          # materialize the named prod datasets (anchor_*)
+# dbt (the project lives in transformation/ — pass --project-dir, or cd transformation first)
+dbt run --project-dir transformation                     # build all models
+dbt run --project-dir transformation --select staging    # staging models only
+dbt run --project-dir transformation --select marts      # gold/mart models only
+dbt test --project-dir transformation                    # run all tests
+dbt test --project-dir transformation --select stg_fred__observations  # single model tests
+dbt build --project-dir transformation                   # run + test together (dev sandbox)
+dbt build --project-dir transformation --target prod     # materialize the prod datasets (anchor_*)
 
 # Serve layer (Streamlit dashboard, reads anchor_marts via the data seam)
 streamlit run app/app.py
@@ -66,6 +66,8 @@ Live: dashboard → anchor-dashboard.streamlit.app · dbt docs → timurakhtemov
 
 ## dbt model layers
 
+_The dbt project lives in `transformation/`; the paths below are relative to it._
+
 **Staging** (`models/staging/`) — silver layer. Rename/typecast only. No business logic.
 - `stg_fred__series`, `stg_fred__observations`
 - `stg_yfinance__tickers`, `stg_yfinance__prices`
@@ -84,7 +86,7 @@ Each holding is benchmarked on **two independent axes**, each against a liquid E
 
 Why two axes rather than one (sector × cap) ETF: that grid can't be filled with liquid instruments (mid-cap sector ETFs barely exist; small-cap sector ETFs trade ~1.5k shares/day). When the joint cell doesn't exist, benchmark on the marginals.
 
-**Generic benchmark model:** a holding has N benchmarks, each an ETF tagged with `benchmark_type` (`sector`, `cap_style`). The comparison is always `holding% − benchmark%`, computed per benchmark. Adding an axis later is a seed row, not a rewrite. The mapping lives in the `benchmark_etfs` seed (`seeds/benchmark_etfs.csv`): `benchmark_type, lookup_key, etf_ticker, etf_name`.
+**Generic benchmark model:** a holding has N benchmarks, each an ETF tagged with `benchmark_type` (`sector`, `cap_style`). The comparison is always `holding% − benchmark%`, computed per benchmark. Adding an axis later is a seed row, not a rewrite. The mapping lives in the `benchmark_etfs` seed (`transformation/seeds/benchmark_etfs.csv`): `benchmark_type, lookup_key, etf_ticker, etf_name`.
 
 **Classification is live from yfinance** — `sector` and `market_cap` come straight from the yfinance `info` fields; no override dimension.
 

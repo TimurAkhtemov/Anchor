@@ -13,7 +13,11 @@ file is just the lean "current state + what's next" pointer. Also see `CLAUDE.md
 The full `macro → sector → holdings` spine is built, verified against real data, and
 now rendered by a Streamlit dashboard.
 
-Gold marts (all in `models/marts/`):
+**Repo layout (2026-06-16):** the dbt project lives in `transformation/` (moved out of the
+repo root); `ingestion/`, `app/`, `orchestration/` are siblings. dbt runs with
+`--project-dir transformation` — the Makefile, CI, and Dagster already pass it.
+
+Gold marts (all in `transformation/models/marts/`):
 - **Macro:** `macro_indicators` (cards), `macro_trend` (sparklines), `macro_regime` (regime banner)
 - **Sector:** `sector_performance` (+ `int_sector_rate_comovement`)
 - **Holdings:** `holdings_benchmarks` (two-axis, the load-bearing one)
@@ -22,8 +26,8 @@ Gold marts (all in `models/marts/`):
 Bronze→silver was already live (FRED 4 series / 44,979 obs; yfinance 14 tickers /
 17,570 bars) and remains green.
 
-**Dev / prod datasets (new this session).** Models now route via
-`macros/generate_schema_name.sql`: plain `dbt build` collapses into the personal
+**Dev / prod datasets.** Models route via
+`transformation/macros/generate_schema_name.sql`: plain `dbt build` collapses into the personal
 sandbox `dbt_timurakhtemov` (which still holds orphaned dbt-tutorial tables — harmless,
 not the serve source); `dbt build --target prod` materializes the named contract
 `anchor_staging` / `anchor_intermediate` / `anchor_marts` / `anchor_seeds`. **The
@@ -50,8 +54,9 @@ snapshot (`app/snapshot/*.parquet`) — no GCP creds. `app/data.py` auto-detects
 
 **Live: https://timurakhtemov.github.io/Anchor/** (GitHub Pages, published by
 `.github/workflows/docs.yml`). v1 is secret-free: serves the committed self-contained
-static site `site/index.html` (`dbt docs generate --static --target prod`). Refresh =
-regenerate, copy `target/static_index.html` → `site/index.html`, push. Pages source is
+static site `site/index.html` (`dbt docs generate --static --project-dir transformation
+--target prod`). Refresh = regenerate, copy `transformation/target/static_index.html` →
+`site/index.html`, push. Pages source is
 set to "GitHub Actions". (Node 20 action-deprecation warning is non-blocking; bump
 action versions when convenient.)
 
@@ -89,7 +94,7 @@ workflow header.
   ingestion + snapshot scripts each wired up separately.
 - **Verified:** full graph materializes through Dagster in dependency order —
   ingest_fred + ingest_yfinance (parallel) → dbt build → snapshot, RUN_SUCCESS (~1m35s).
-  Payoff lineage screenshot captured (`dagster-lineage.png`, local — PNGs are gitignored).
+  Payoff lineage screenshot captured (`docs/images/dagster-lineage.png`, local — PNGs are gitignored).
 
 **Why in-process assets (not subprocess):** future-proofs the roadmap — new sources
 (SnapTrade holdings) reuse the resource; partitioned/incremental loads pass config into

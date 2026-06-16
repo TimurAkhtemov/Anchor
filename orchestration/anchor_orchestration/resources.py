@@ -29,7 +29,7 @@ DBT_PROFILES_DIR = Path.home() / ".dbt"
 
 # DbtProject regenerates the manifest from source on `dagster dev`
 # (prepare_if_dev), so the Dagster asset graph never drifts from the dbt project.
-dbt_project = DbtProject(project_dir=REPO_ROOT, profiles_dir=DBT_PROFILES_DIR, target="prod")
+dbt_project = DbtProject(project_dir=REPO_ROOT / "transformation", profiles_dir=DBT_PROFILES_DIR, target="prod")
 dbt_project.prepare_if_dev()
 
 dbt_resource = DbtCliResource(project_dir=dbt_project)

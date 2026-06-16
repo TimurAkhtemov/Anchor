@@ -21,10 +21,10 @@ ingest:  ## Pull bronze: FRED + yfinance -> BigQuery (full refresh)
 	python ingestion/ingest_yfinance.py
 
 deps:  ## Install dbt packages
-	dbt deps
+	dbt deps --project-dir transformation
 
 build-prod: deps  ## dbt build + test into the prod marts (anchor_* datasets)
-	dbt build --target prod
+	dbt build --project-dir transformation --target prod
 
 snapshot:  ## Export prod marts -> committed parquet (app/snapshot/)
 	python app/export_snapshot.py
