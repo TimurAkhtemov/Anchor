@@ -1,8 +1,9 @@
 # Anchor — Session Handoff
 
-_Last updated: 2026-06-16 (Dagster orchestration built; repo restructured — dbt now lives
-in `transformation/`; CI + Pages bumped to Node-24 actions, all green on remote. Next =
-Dagster+ Serverless for the unattended scheduled run). The **`README.md` is the
+_Last updated: 2026-07-01 (dbt-depth pass complete + pushed: incremental price staging,
+SCD2 ticker snapshot, source freshness, exposures, `holdings_benchmarks` contract, and
+fresh parquet snapshots. Next = dynamic holdings ingestion → multi-asset benchmarking,
+then Dagster+ Serverless once the fuller graph is worth scheduling). The **`README.md` is the
 canonical project doc** —
 architecture, model map, design decisions, limitations, roadmap. Read it first. This
 file is just the lean "current state + what's next" pointer. Also see `CLAUDE.md`
@@ -10,7 +11,7 @@ file is just the lean "current state + what's next" pointer. Also see `CLAUDE.md
 
 ## State of the world
 
-**Bronze → silver → gold → serve is complete, tested, and green — `dbt build` = 92/92.**
+**Bronze → silver → gold → serve is complete, tested, and green — `dbt build` = 93/93.**
 The full `macro → sector → holdings` spine is built, verified against real data, and
 now rendered by a Streamlit dashboard.
 
@@ -27,15 +28,17 @@ Gold marts (all in `transformation/models/marts/`):
 - **Holdings:** `holdings_benchmarks` (two-axis, the load-bearing one)
 - **Shared:** `ticker_trend`, `int_ticker_returns`, `int_macro_indicators`
 
-Bronze→silver was already live (FRED 4 series / 44,979 obs; yfinance 14 tickers /
-17,570 bars) and remains green.
+Bronze→silver is live and freshly refreshed as of 2026-07-01 (FRED 4 series / 45,018
+obs; yfinance 14 tickers / 17,556 bars). `dbt source freshness --target prod` passes
+after refresh.
 
 **Dev / prod datasets.** Models route via
 `transformation/macros/generate_schema_name.sql`: plain `dbt build` collapses into the personal
 sandbox `dbt_timurakhtemov` (which still holds orphaned dbt-tutorial tables — harmless,
 not the serve source); `dbt build --target prod` materializes the named contract
-`anchor_staging` / `anchor_intermediate` / `anchor_marts` / `anchor_seeds`. **The
-dashboard reads `anchor_marts`.** A `prod` target was added to `~/.dbt/profiles.yml`
+`anchor_staging` / `anchor_intermediate` / `anchor_marts` / `anchor_seeds`; the ticker
+metadata dbt snapshot writes to `anchor_snapshots` in prod. **The dashboard reads
+`anchor_marts`.** A `prod` target was added to `~/.dbt/profiles.yml`
 (dataset `anchor`, same SA key).
 
 **Serve layer — `app/`.** Single top-down page (macro → sectors →
@@ -68,11 +71,32 @@ checkout@v6, setup-python@v6, configure-pages@v6, upload-pages-artifact@v5, depl
 
 **`.github/workflows/ci.yml`** builds + tests on every PR/push to main: `dbt build
 --target ci` compiles all models, builds into the isolated `dbt_ci` dataset, runs all
-92 tests. Auth via the **`BQ_SA_KEY`** repo secret (the existing SA key — set this
+78 tests plus model builds/seeds/snapshots. Auth via the **`BQ_SA_KEY`** repo secret (the existing SA key — set this
 session). `ci/profiles.yml` defines the `ci` target. A guard job skips the build (run
-stays green) if the secret is ever absent. Verified green (build ran 92/92, ~1m29s).
+stays green) if the secret is ever absent. Locally verified green on 2026-07-01:
+`make refresh` got ingestion + dbt build to 93/93, then snapshot export was rerun with
+`GOOGLE_APPLICATION_CREDENTIALS=~/.dbt/anchor-bigquery-key.json` because
+`app/export_snapshot.py` expects ADC when invoked directly.
 Keyless upgrade (Workload Identity Federation) is a ~5-line workflow swap, noted in the
 workflow header.
+
+## DONE — dbt-depth pass
+
+Completed and pushed 2026-07-01 (`feat(dbt): add depth pass and refresh snapshots`).
+
+- **Incremental price staging.** `stg_yfinance__prices` is now an incremental BigQuery
+  merge table keyed on `(ticker, trading_date)`, partitioned by `trading_date`, clustered
+  by `ticker`, and reloading the latest 7 days to absorb yfinance corrections/trailing-bar
+  finalization.
+- **SCD2 ticker metadata snapshot.** `snap_yfinance_tickers` tracks changes in company
+  name, sector, industry, market cap, exchange, and currency. Prod relation:
+  `anchor_snapshots.snap_yfinance_tickers`; dev/CI use the active target schema.
+- **Freshness contract.** Raw yfinance tables warn/error at 36h/72h; raw FRED tables at
+  7d/14d. `dbt source freshness --target prod` passes after the 2026-07-01 refresh.
+- **Exposures.** dbt lineage now includes the Streamlit dashboard and parquet snapshot
+  export downstream of the six served marts.
+- **Model contract.** `holdings_benchmarks` has an enforced column/type contract while
+  preserving its existing grain, relationship, accepted-value, and guardrail tests.
 
 ## DONE — Dagster orchestration (dagster-dbt)
 

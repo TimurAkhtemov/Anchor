@@ -53,6 +53,10 @@ python app/export_snapshot.py    # refresh the committed snapshot the live demo 
 make ingest | make build-prod | make snapshot | make refresh
 ```
 
+Note: `make snapshot`/`make refresh` may need
+`GOOGLE_APPLICATION_CREDENTIALS=~/.dbt/anchor-bigquery-key.json` for `app/export_snapshot.py`
+unless Application Default Credentials are configured.
+
 Live: dashboard → anchor-dashboard.streamlit.app · dbt docs → timurakhtemov.github.io/Anchor
 
 ## Data sources
@@ -62,9 +66,9 @@ Live: dashboard → anchor-dashboard.streamlit.app · dbt docs → timurakhtemov
 - `raw_fred_observations` — long-format time series (series_id, date, value)
 
 **yfinance** (`raw_yfinance` dataset in BigQuery):
-- `raw_yfinance_tickers` — metadata for 13 tickers (includes `market_cap`, used to bucket holdings into cap tiers)
+- `raw_yfinance_tickers` — metadata for 14 tickers (includes `market_cap`, used to bucket holdings into cap tiers)
 - `raw_yfinance_prices` — daily OHLCV bars (long format, one row per ticker/date)
-- Tickers = sector ETFs `XLK, XLF, XLE, XLV, XLI` + cap-style ETFs `SPY, MDY, IWM` + holdings `AAPL, JPM, XOM, UNH, BA`
+- Tickers = sector ETFs `XLK, XLF, XLE, XLV, XLI` + cap-style ETFs `SPY, MDY, IWM` + holdings `AAPL, JPM, HIMS, TALO, CVLG, IMMR`
 
 ## dbt model layers
 
@@ -72,13 +76,20 @@ _The dbt project lives in `transformation/`; the paths below are relative to it.
 
 **Staging** (`models/staging/`) — silver layer. Rename/typecast only. No business logic.
 - `stg_fred__series`, `stg_fred__observations`
-- `stg_yfinance__tickers`, `stg_yfinance__prices`
+- `stg_yfinance__tickers`, `stg_yfinance__prices` (`prices` is incremental in prod)
+
+**Snapshot** (`snapshots/`) — history-preserving metadata.
+- `snap_yfinance_tickers` — SCD2/check snapshot for ticker metadata changes; prod writes to `anchor_snapshots`.
 
 **Gold / marts** (`models/marts/`) — relationship-framed outputs the dashboard reads. **Built, tested, deployed.**
 - `macro_indicators` (cards) + `macro_trend` (sparklines) + `macro_regime` (regime banner)
 - `sector_performance` — sector ETF performance contextualized against the macro regime
 - `holdings_benchmarks` — holding % paired with each benchmark % as one row (not two cuts the UI joins)
 - `ticker_trend` — sparkline series for every ticker
+
+**Lineage / contracts.**
+- `models/marts/_exposures.yml` declares the Streamlit dashboard and parquet snapshot export as downstream consumers of the six served marts.
+- `holdings_benchmarks` has an enforced dbt contract; if its output columns/types drift, dbt should fail before the app silently breaks.
 
 ## Benchmarking design (two-axis)
 
