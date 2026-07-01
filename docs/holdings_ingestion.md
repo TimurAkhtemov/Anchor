@@ -1,8 +1,8 @@
 # Dynamic Holdings Ingestion & Fidelity Connection
 
-_Status: exploratory / deferred. Nothing built. Captured 2026-06-11. This is the
-"make it real" capstone — replacing the static watchlist with real holdings. Couples
-tightly to `docs/multi_asset_benchmarking.md` (real portfolios force multi-asset) and
+_Status: **superseded 2026-07-01** — the open decisions below are resolved in
+`docs/make_it_real_design.md` (the locked build spec). Kept as design history.
+Originally captured 2026-06-11; couples to `docs/multi_asset_benchmarking.md` and
 relates to `docs/ingestion_roadmap.md` (price-data freshness)._
 
 ## Goal
