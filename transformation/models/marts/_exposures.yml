@@ -1,0 +1,39 @@
+version: 2
+
+exposures:
+  - name: streamlit_dashboard
+    label: Anchor Streamlit Dashboard
+    type: dashboard
+    maturity: medium
+    url: https://anchor-dashboard.streamlit.app
+    description: >
+      Public Anchor dashboard. Reads the macro, sector, holdings, and trend
+      marts through the app/data.py source seam.
+    depends_on:
+      - ref('macro_indicators')
+      - ref('macro_regime')
+      - ref('macro_trend')
+      - ref('sector_performance')
+      - ref('holdings_benchmarks')
+      - ref('ticker_trend')
+    owner:
+      name: Timur Akhtemov
+      email: timur.akhtemov@gmail.com
+
+  - name: parquet_snapshot_export
+    label: Anchor Parquet Snapshot Export
+    type: application
+    maturity: medium
+    description: >
+      Snapshot export consumed by the public Streamlit deploy when BigQuery
+      credentials are unavailable.
+    depends_on:
+      - ref('macro_indicators')
+      - ref('macro_regime')
+      - ref('macro_trend')
+      - ref('sector_performance')
+      - ref('holdings_benchmarks')
+      - ref('ticker_trend')
+    owner:
+      name: Timur Akhtemov
+      email: timur.akhtemov@gmail.com

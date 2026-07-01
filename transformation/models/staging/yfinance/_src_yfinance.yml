@@ -7,6 +7,15 @@ sources:
     tables:
       - name: raw_yfinance_tickers
         description: Metadata for stock tickers ingested from yfinance.
+        config:
+          loaded_at_field: ingested_at
+          freshness:
+            warn_after:
+              count: 36
+              period: hour
+            error_after:
+              count: 72
+              period: hour
         columns:
           - name: ticker
             description: Unique ticker symbol (e.g. AAPL, SPY).
@@ -15,6 +24,15 @@ sources:
               - not_null
       - name: raw_yfinance_prices
         description: Daily historical price data ingested from yfinance.
+        config:
+          loaded_at_field: ingested_at
+          freshness:
+            warn_after:
+              count: 36
+              period: hour
+            error_after:
+              count: 72
+              period: hour
         columns:
           - name: ticker
             description: Ticker symbol.

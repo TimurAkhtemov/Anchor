@@ -1,6 +1,25 @@
+{{
+    config(
+        materialized='incremental',
+        unique_key=['ticker', 'trading_date'],
+        incremental_strategy='merge',
+        partition_by={
+            'field': 'trading_date',
+            'data_type': 'date',
+            'granularity': 'day'
+        },
+        cluster_by=['ticker']
+    )
+}}
+
 with source as (
 
     select * from {{ source('yfinance', 'raw_yfinance_prices') }}
+
+    {% if is_incremental() %}
+        where date >= date_sub((select max(trading_date) from {{ this }}), interval 7 day)
+           or ticker not in (select distinct ticker from {{ this }})
+    {% endif %}
 
 ),
 

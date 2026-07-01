@@ -34,6 +34,9 @@ models:
       cap-style), holding% and benchmark% computed together as one row per
       pairing, with the relative position (pp) and an ahead/behind/in_line
       label per horizon. Grain: one row per (holding_ticker, benchmark_type).
+    config:
+      contract:
+        enforced: true
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -42,6 +45,7 @@ models:
               - benchmark_type
     columns:
       - name: holding_ticker
+        data_type: string
         description: The individual holding's symbol.
         data_tests:
           - not_null
@@ -49,11 +53,19 @@ models:
               arguments:
                 to: ref('stg_yfinance__tickers')
                 field: ticker
+      - name: company_name
+        data_type: string
+        description: Holding company name from yfinance.
       - name: sector
+        data_type: string
         description: Holding's live yfinance sector (Yahoo taxonomy). Sector-axis join key.
         data_tests:
           - not_null
+      - name: market_cap
+        data_type: int64
+        description: Holding's yfinance market capitalization in USD.
       - name: cap_tier
+        data_type: string
         description: Derived cap tier (Large >=$10B, Mid $2-10B, Small <$2B). Cap-style-axis join key.
         data_tests:
           - not_null
@@ -61,6 +73,7 @@ models:
               arguments:
                 values: ['Large', 'Mid', 'Small']
       - name: benchmark_type
+        data_type: string
         description: Which axis this row benchmarks on.
         data_tests:
           - not_null
@@ -68,6 +81,7 @@ models:
               arguments:
                 values: ['sector', 'cap_style']
       - name: benchmark_etf
+        data_type: string
         description: The benchmark ETF for this axis.
         data_tests:
           - not_null
@@ -75,17 +89,73 @@ models:
               arguments:
                 to: ref('stg_yfinance__tickers')
                 field: ticker
+      - name: benchmark_name
+        data_type: string
+        description: Human-readable benchmark ETF name.
+      - name: as_of_date
+        data_type: date
+        description: Common as-of date shared by the holding and benchmark returns.
+      - name: holding_close
+        data_type: float64
+        description: Holding close price on the common as-of date.
+      - name: benchmark_close
+        data_type: float64
+        description: Benchmark ETF close price on the common as-of date.
+      - name: holding_daily_pct
+        data_type: float64
+        description: Holding percent return versus the prior trading session.
+      - name: benchmark_daily_pct
+        data_type: float64
+        description: Benchmark percent return versus the prior trading session.
+      - name: relative_daily_pp
+        data_type: float64
+        description: holding% - benchmark% over the prior trading session, in percentage points.
+      - name: label_daily
+        data_type: string
+        description: ahead / behind / in_line over the prior trading session.
+      - name: holding_1m_pct
+        data_type: float64
+        description: Holding percent return over roughly 1 month.
+      - name: benchmark_1m_pct
+        data_type: float64
+        description: Benchmark percent return over roughly 1 month.
       - name: relative_1m_pp
+        data_type: float64
         description: holding% - benchmark% over 1 month, in percentage points. Default-horizon relative position.
         data_tests:
           - not_null
       - name: label_1m
+        data_type: string
         description: ahead / behind / in_line over 1 month, against the inline_band_pp band.
         data_tests:
           - not_null
           - accepted_values:
               arguments:
                 values: ['ahead', 'behind', 'in_line']
+      - name: holding_ytd_pct
+        data_type: float64
+        description: Holding percent return year to date.
+      - name: benchmark_ytd_pct
+        data_type: float64
+        description: Benchmark percent return year to date.
+      - name: relative_ytd_pp
+        data_type: float64
+        description: holding% - benchmark% year to date, in percentage points.
+      - name: label_ytd
+        data_type: string
+        description: ahead / behind / in_line year to date.
+      - name: holding_1y_pct
+        data_type: float64
+        description: Holding percent return over roughly 1 year.
+      - name: benchmark_1y_pct
+        data_type: float64
+        description: Benchmark percent return over roughly 1 year.
+      - name: relative_1y_pp
+        data_type: float64
+        description: holding% - benchmark% over roughly 1 year, in percentage points.
+      - name: label_1y
+        data_type: string
+        description: ahead / behind / in_line over roughly 1 year.
 
   - name: macro_regime
     description: >
