@@ -14,12 +14,24 @@ import ui
 
 st.set_page_config(page_title="Anchor", page_icon="⚓", layout="wide")
 
-# Friendly card labels (mart keys are stable but not pretty).
-MACRO_LABELS = {
-    "fed_funds_rate": "Fed Funds Rate",
-    "ten_year_yield": "10-Year Treasury",
-    "inflation_yoy": "Inflation (YoY)",
-    "unemployment_rate": "Unemployment",
+# Friendly card labels and tooltips (mart keys are stable but not pretty).
+MACRO_METADATA = {
+    "fed_funds_rate": {
+        "label": "Fed Funds Rate",
+        "help": "The benchmark interest rate set by the Federal Reserve. When it rises, bank lending costs increase, driving up rates on mortgages, credit cards, and business loans to cool down spending."
+    },
+    "ten_year_yield": {
+        "label": "10-Year Treasury",
+        "help": "The interest rate paid on 10-year U.S. government debt. It serves as a benchmark for long-term lending rates and heavily influences how stock market valuations (especially tech) are discounted."
+    },
+    "inflation_yoy": {
+        "label": "Inflation (YoY)",
+        "help": "The year-over-year rate at which consumer prices are rising (based on the Consumer Price Index). High inflation shrinks consumer purchasing power."
+    },
+    "unemployment_rate": {
+        "label": "Unemployment",
+        "help": "The percentage of the labor force actively seeking work. Low unemployment signals a healthy consumer economy but can contribute to wage inflation."
+    },
 }
 
 # Horizons exposed consistently across the sector + holdings marts.
@@ -39,6 +51,34 @@ def render_macro():
     trend = data.macro_trend()
 
     st.subheader("Macro environment")
+    
+    with st.expander("📚 Quick Guide: How to read the Macro environment"):
+        st.markdown("""
+        This section shows the **macro economic regime** of the U.S. economy. Understanding this is crucial because it sets the backdrop for stock market behavior:
+        
+        ### The Macro Indicators:
+        - **Fed Funds Rate & 10-Year Treasury:** Benchmark interest rates. Rising rates increase borrowing costs for consumers and businesses, slowing down spending and stock market valuations.
+        - **Inflation (YoY):** Shows how fast prices are rising. High inflation forces the Fed to raise interest rates to cool the economy.
+        - **Unemployment Rate:** Reflects the strength of the jobs market. A very strong labor market supports consumer spending but can lead to inflation pressure.
+        
+        ### The Regime Chips & Their States:
+        
+        - **Rates:**
+          - **`rising`**: Fed Funds Rate increased by **0.25 pp** or more over 3 months (at least one standard Fed rate hike).
+          - **`easing`**: Fed Funds Rate decreased by **0.25 pp** or more over 3 months (at least one standard Fed rate cut).
+          - **`steady`**: Changed by less than **0.25 pp** (rates are flat/unchanged).
+        
+        - **Inflation:**
+          - **`rising`**: YoY Inflation increased by **0.30 pp** or more over 3 months (inflation heating up).
+          - **`cooling`**: YoY Inflation decreased by **0.30 pp** or more over 3 months (inflation cooling down).
+          - **`stable`**: Changed by less than **0.30 pp** (prices are steady).
+          
+        - **Labor:**
+          - **`loosening`**: Unemployment Rate increased by **0.20 pp** or more over 3 months (more job seekers, hiring cooling).
+          - **`tightening`**: Unemployment Rate decreased by **0.20 pp** or more over 3 months (fewer job seekers, job market heating).
+          - **`stable`**: Changed by less than **0.20 pp** (labor market is steady).
+        """)
+
     chips = (
         ui.regime_chip("Rates", regime["rates_state"])
         + ui.regime_chip("Inflation", regime["inflation_state"])
@@ -52,14 +92,23 @@ def render_macro():
 
     cols = st.columns(len(indicators))
     for col, (_, row) in zip(cols, indicators.iterrows()):
+        key = row["indicator_key"]
+        meta = MACRO_METADATA.get(key, {"label": key, "help": ""})
         with col:
             with st.container(border=True):
                 # delta_color off: a rising rate isn't "good/bad" — no green/red.
                 st.metric(
-                    label=MACRO_LABELS.get(row["indicator_key"], row["indicator_key"]),
+                    label=meta["label"],
                     value=ui.pct(row["current_value"]),
                     delta=f"{row['delta_3mo']:+.2f} pp (3mo)",
                     delta_color="off",
+                    help=meta["help"],
+                )
+                st.markdown(
+                    f"<div style='color:{ui.SLATE}; font-size:0.78rem; font-weight: 500; margin-top: -10px; margin-bottom: 8px;'>"
+                    f"3mo ago: {ui.pct(row['value_3mo_ago'])}"
+                    f"</div>",
+                    unsafe_allow_html=True,
                 )
                 series = trend[trend["indicator_key"] == row["indicator_key"]]
                 if not series.empty:
