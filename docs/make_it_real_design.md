@@ -25,7 +25,7 @@ In one sentence: holdings stop being config and become data; everything downstre
 | 4 | **Bond duration axis in v1** (alongside `bond_market`) | Tightest macro→holdings causal link in the product (DGS10 already on the dashboard); cost is a few seed rows |
 | 5 | **SnapTrade in v1, sequenced last** | The live-connection flex; lands after CSV proves the models, so external-API friction can only delay itself |
 | 6 | **Classification in dbt** from yfinance `quote_type` + a fund seed; never in the loader | Business logic belongs where it's versioned and testable; bronze stays faithful capture |
-| 7 | **Fund classification is a maintained mapping, not derived** | Verified live 2026-07-01: yfinance `category` is **None for Fidelity mutual funds** — FXAIX (equity) and FXNAX (bond) are indistinguishable from metadata. A guardrail test fails the build on any unclassified held fund |
+| 7 | **Fund classification is a maintained mapping, not derived** | Verified live 2026-07-01: yfinance `category` is **None for Fidelity mutual funds** — FXAIX (equity) and FXNAX (bond) are indistinguishable from metadata. Alternative sources ruled out (see appendix). A guardrail test fails the build on any unclassified held fund |
 | 8 | **Real-fund classifications stay out of the repo** | Committed seed covers demo funds only; real funds live in a gitignored CSV landed as a private bronze table (staging unions the two). "Nothing about the real portfolio in the repo" stays absolute — not even tickers |
 | 9 | **Holdings load appends with `as_of`**; staging reads latest | Banks position history from day one for the future portfolio-over-time milestone; costs nothing now |
 | 10 | **Market value recomputed** as `quantity × latest_close` in gold (CSV's own value kept in bronze for audit) | Weights stay fresh between imports. Exception: cash-like rows use the source value (fixed $1 NAV / no price series) |
@@ -269,3 +269,27 @@ Implications baked into this design: `quote_type` is the reliable spine
 fund seed is *required*, not a preference); `marketCap` is null for all funds (cap
 tier must be equity-only). ETF `category` strings exist and can serve as a future
 cross-check test against the seed — never as the routing source.
+
+### Alternatives to the maintained fund seed — checked and ruled out (2026-07-01)
+
+Pressure-tested (by Timur) before locking decision 7, since "hand-maintain a
+mapping" deserved a challenge:
+
+- **SnapTrade positions API** — `security_type` for a mutual fund is just `oef`
+  (Open Ended Fund); no asset_class/category/sector anywhere in the symbol schema.
+  Same ceiling as yfinance `quote_type`. Key insight: the live broker connection
+  removes *transport* friction (CSV export/upload), not *classification* friction —
+  two separate frictions, easy to conflate.
+- **OpenFIGI** — `marketSector`/`securityType2` classify the security *wrapper*
+  ("Equity" for any fund share), not what the fund holds inside.
+- **SEC EDGAR (Form N-PORT)** — the only free source with ground truth (funds file
+  actual portfolio holdings quarterly), but no ticker→asset_class endpoint: it
+  means ticker→series/class-ID mapping plus quarterly XML parsing. Real engineering
+  for a problem that costs ~2 minutes per newly-added fund.
+- **Financial Modeling Prep** — a fund sector-weighting endpoint *might* reveal
+  asset class indirectly; unconfirmed (needs a live key + test call, not
+  docs-reading). Not load-bearing for v1 either way.
+
+Net: nothing removes the manual seed without paying for Morningstar-grade data or
+building a filings parser that costs more than what it replaces. The seed +
+fail-loud coverage guardrail stands.
