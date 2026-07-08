@@ -714,7 +714,7 @@ models:
               arguments:
                 values: ['equity', 'fixed_income', 'commodity', 'cash', 'alt']
       - name: sub_style
-        description: Per-asset-class style axis value (bonds: duration bucket). Null = skip that axis.
+        description: "Per-asset-class style axis value (bonds: duration bucket). Null = skip that axis."
         data_tests:
           - accepted_values:
               arguments:
@@ -735,7 +735,7 @@ models:
                 values: ['EQUITY', 'ETF', 'MUTUALFUND', 'MONEYMARKET', 'INDEX', 'CRYPTOCURRENCY']
 ```
 
-- [ ] **Step 8: Build and test staging.** Run: `cd transformation && ~/.local/bin/dbt build --select staging fund_classifications snap_yfinance_tickers`. Expected: all green (staging models + seed + snapshot + new tests) into the dev sandbox.
+- [ ] **Step 8: Build and test staging.** Run: `cd transformation && ~/.local/bin/dbt build --select staging fund_classifications snap_yfinance_tickers --indirect-selection cautious`. Expected: all green (staging models + seed + snapshot + new tests) into the dev sandbox. (`cautious` is required: eager indirect selection pulls in the pre-existing `assert_holdings_benchmarked_on_both_axes` test, which is known-red between Task 3's universe expansion and Task 6's mart+test rework.)
 
 - [ ] **Step 9: Commit.**
 
@@ -1027,7 +1027,7 @@ where t.quote_type in ('ETF', 'MUTUALFUND')
                 field: ticker
 ```
 
-- [ ] **Step 5: Build and inspect.** Run: `cd transformation && ~/.local/bin/dbt build --select +int_holdings_classified +int_benchmark_routing assert_held_funds_classified`. Expected: green. Then eyeball the routing:
+- [ ] **Step 5: Build and inspect.** Run: `cd transformation && ~/.local/bin/dbt build --select +int_holdings_classified +int_benchmark_routing assert_held_funds_classified --indirect-selection cautious` (`cautious` avoids the known-red pre-Task-6 guardrail, as in Task 4). Expected: green. Then eyeball the routing:
 
 ```bash
 cd transformation && ~/.local/bin/dbt show --inline "select holding_ticker, benchmark_type, benchmark_etf, is_self from {{ ref('int_benchmark_routing') }} order by 1, 2" --limit 50
@@ -1260,7 +1260,7 @@ where days_ago <= 30
         description: yfinance quoteType; null for the CASH pseudo-ticker.
       - name: sub_style
         data_type: string
-        description: Per-class style axis (bonds: duration bucket); null = axis skipped.
+        description: "Per-class style axis (bonds: duration bucket); null = axis skipped."
       - name: quantity
         data_type: float64
         description: Shares / units / dollars (money market).
