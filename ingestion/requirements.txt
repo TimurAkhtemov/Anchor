@@ -4,4 +4,4 @@ pandas
 google-cloud-bigquery
 db-dtypes
 yfinance
-
+pytest
