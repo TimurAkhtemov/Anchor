@@ -22,7 +22,10 @@ from pathlib import Path
 import pandas as pd
 from google.cloud import bigquery
 
-from ingestion.holdings_csv import parse_fidelity_positions
+try:
+    from ingestion.holdings_csv import parse_fidelity_positions
+except ModuleNotFoundError:  # direct script run: ingestion/ itself is on sys.path, the repo root is not
+    from holdings_csv import parse_fidelity_positions
 
 logger = logging.getLogger(__name__)
 
