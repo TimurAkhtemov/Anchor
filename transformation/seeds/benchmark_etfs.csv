@@ -13,3 +13,8 @@ sector,Basic Materials,XLB,Materials Select Sector SPDR Fund
 cap_style,Large,SPY,SPDR S&P 500 ETF Trust
 cap_style,Mid,MDY,SPDR S&P MidCap 400 ETF Trust
 cap_style,Small,IWM,iShares Russell 2000 ETF
+market,equity,SPY,State Street SPDR S&P 500 ETF Trust
+bond_market,fixed_income,AGG,iShares Core U.S. Aggregate Bond ETF
+duration,short,SHY,iShares 1-3 Year Treasury Bond ETF
+duration,intermediate,IEF,iShares 7-10 Year Treasury Bond ETF
+duration,long,TLT,iShares 20+ Year Treasury Bond ETF
