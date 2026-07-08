@@ -29,6 +29,15 @@ models:
         description: Trading exchange code.
       - name: currency
         description: Currency of price values.
+      - name: quote_type
+        description: >
+          yfinance quoteType — EQUITY / ETF / MUTUALFUND / MONEYMARKET. The
+          asset-classification spine; reliable for instrument FORM, silent on
+          fund contents (hence the fund_classifications mapping).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['EQUITY', 'ETF', 'MUTUALFUND', 'MONEYMARKET', 'INDEX', 'CRYPTOCURRENCY']
       - name: raw_ingested_at
         description: Ingestion audit timestamp.
 

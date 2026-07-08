@@ -14,6 +14,7 @@ renamed as (
         market_cap,
         exchange,
         currency,
+        quote_type,
         ingested_at as raw_ingested_at
 
     from source

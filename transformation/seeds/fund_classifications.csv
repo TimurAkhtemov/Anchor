@@ -1,0 +1,6 @@
+ticker,asset_class,sub_style
+VOO,equity,
+SPY,equity,
+BND,fixed_income,intermediate
+FXAIX,equity,
+FXNAX,fixed_income,intermediate

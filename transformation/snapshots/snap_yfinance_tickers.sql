@@ -13,7 +13,8 @@
             'industry',
             'market_cap',
             'exchange',
-            'currency'
+            'currency',
+            'quote_type'
         ],
         invalidate_hard_deletes=True
     )
@@ -27,6 +28,7 @@ select
     market_cap,
     exchange,
     currency,
+    quote_type,
     raw_ingested_at
 from {{ ref('stg_yfinance__tickers') }}
 

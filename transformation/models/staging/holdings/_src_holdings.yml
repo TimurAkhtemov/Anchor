@@ -1,0 +1,19 @@
+version: 2
+
+sources:
+  - name: holdings
+    database: anchor-495115
+    schema: raw_holdings
+    description: >
+      Portfolio holdings bronze. holdings_demo is the committed sample portfolio
+      (public path); holdings_real is the private portfolio (never public).
+      Loads append with an as_of batch date; staging reads the latest batch.
+    tables:
+      - name: holdings_demo
+      - name: holdings_real
+      - name: fund_classifications_real
+        description: >
+          Private fund-classification table for real-portfolio funds, landed by
+          the loader from a gitignored CSV. The committed fund_classifications
+          seed covers demo funds only — no fact about the real portfolio (not
+          even fund tickers) lives in the repo.
