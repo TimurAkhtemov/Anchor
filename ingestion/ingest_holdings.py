@@ -3,7 +3,8 @@
 One loader, multiple transports, one schema:
   --from-csv <path>      parse a Fidelity positions export (or the committed
                          demo sample, which is in the same format)
-  --from-snaptrade       pull live positions via SnapTrade (added later)
+  --from-snaptrade       pull live positions via SnapTrade (requires
+                         --portfolio real; secrets in .env)
 
 --portfolio demo|real routes to holdings_demo / holdings_real. Loads APPEND
 with an as_of batch date so position history accumulates from day one;
@@ -74,17 +75,17 @@ def _ensure_dataset(bq_client) -> None:
         logger.info(f"Created dataset {PROJECT_ID}.{DATASET_ID}")
 
 
-def ingest_holdings_csv(bq_client, csv_path: str, portfolio: str, as_of: date | None = None) -> int:
-    """Parse a Fidelity-format CSV and APPEND it to holdings_<portfolio>."""
+def _load_positions(bq_client, rows: list[dict], portfolio: str, as_of: date | None, source: str) -> int:
+    """APPEND normalized position dicts to holdings_<portfolio> — the one load
+    path every transport (CSV, SnapTrade) funnels through."""
     if portfolio not in ("demo", "real"):
         raise ValueError(f"portfolio must be demo|real, got {portfolio!r}")
-    rows = parse_fidelity_positions(Path(csv_path).read_text())
     if not rows:
-        raise RuntimeError(f"no positions parsed from {csv_path}")
+        raise RuntimeError("no positions to load")
 
     df = pd.DataFrame(rows)
     df["as_of"] = as_of or date.today()
-    df["source"] = "sample" if portfolio == "demo" else "csv"
+    df["source"] = source
     df["ingested_at"] = datetime.now(UTC)
 
     _ensure_dataset(bq_client)
@@ -98,6 +99,101 @@ def ingest_holdings_csv(bq_client, csv_path: str, portfolio: str, as_of: date | 
     ).result()
     logger.info(f"Appended {len(df)} rows to {PROJECT_ID}.{DATASET_ID}.{table}")
     return len(df)
+
+
+def ingest_holdings_csv(bq_client, csv_path: str, portfolio: str, as_of: date | None = None) -> int:
+    """Parse a Fidelity-format CSV and APPEND it to holdings_<portfolio>."""
+    rows = parse_fidelity_positions(Path(csv_path).read_text())
+    if not rows:
+        raise RuntimeError(f"no positions parsed from {csv_path}")
+    source = "sample" if portfolio == "demo" else "csv"
+    return _load_positions(bq_client, rows, portfolio, as_of, source)
+
+
+def fetch_snaptrade_positions() -> list[dict]:
+    """Pull live positions for every connected account, normalized to the same
+    dict shape parse_fidelity_positions produces.
+
+    Field paths verified against the live payload (not assumed from docs):
+    ticker/description sit two levels down (position.symbol.symbol), `units`
+    is the primary share count with `fractional_units` as fallback, and
+    `average_purchase_price` can be null (cost basis unavailable).
+
+    Cash handling (also verified live): the brokerage money-market sweep
+    arrives as a normal position (`cash_equivalent=True`, price 1.0) whose
+    market value equals the account's separately reported cash balance — so
+    balances are NOT loaded as rows; that would double count. Only a residual
+    cash balance not already represented by a cash-equivalent position is
+    mapped to a ticker=None row, which staging's CASH path picks up.
+    """
+    from dotenv import load_dotenv
+    from snaptrade_client import SnapTrade
+
+    load_dotenv()
+    snaptrade = SnapTrade(
+        client_id=os.environ["SNAPTRADE_CLIENT_ID"],
+        consumer_key=os.environ["SNAPTRADE_CONSUMER_KEY"],
+    )
+    uid = os.environ["SNAPTRADE_USER_ID"]
+    sec = os.environ["SNAPTRADE_USER_SECRET"]
+
+    rows: list[dict] = []
+    accounts = snaptrade.account_information.list_user_accounts(user_id=uid, user_secret=sec).body
+    for account in accounts:
+        account_number = account.get("number") or account["id"]
+        account_name = account.get("name")
+        positions = snaptrade.account_information.get_user_account_positions(
+            user_id=uid, user_secret=sec, account_id=account["id"]
+        ).body
+
+        cash_equivalent_value = 0.0
+        for p in positions:
+            symbol = (p.get("symbol") or {}).get("symbol") or {}
+            units = p.get("units") if p.get("units") is not None else p.get("fractional_units")
+            price = p.get("price")
+            avg_price = p.get("average_purchase_price")
+            market_value = (
+                float(units) * float(price) if units is not None and price is not None else None
+            )
+            if p.get("cash_equivalent") and market_value is not None:
+                cash_equivalent_value += market_value
+            rows.append(
+                {
+                    "account_number": account_number,
+                    "account_name": account_name,
+                    "ticker": symbol.get("symbol"),
+                    "description": symbol.get("description"),
+                    "quantity": float(units) if units is not None else None,
+                    "price": float(price) if price is not None else None,
+                    "market_value": market_value,
+                    "cost_basis_total": (
+                        float(avg_price) * float(units)
+                        if avg_price is not None and units is not None
+                        else None
+                    ),
+                }
+            )
+
+        # Residual cash the positions don't already cover (sweep-less brokers).
+        balances = snaptrade.account_information.get_user_account_balance(
+            user_id=uid, user_secret=sec, account_id=account["id"]
+        ).body
+        cash_balance = sum(float(b["cash"]) for b in balances if b.get("cash") is not None)
+        residual = cash_balance - cash_equivalent_value
+        if residual > 1.0:  # ignore rounding noise
+            rows.append(
+                {
+                    "account_number": account_number,
+                    "account_name": account_name,
+                    "ticker": None,
+                    "description": "Cash balance (SnapTrade)",
+                    "quantity": residual,
+                    "price": 1.0,
+                    "market_value": residual,
+                    "cost_basis_total": None,
+                }
+            )
+    return rows
 
 
 def ingest_fund_classifications(bq_client, csv_path: str) -> int:
@@ -128,6 +224,8 @@ def main() -> None:
                         handlers=[logging.StreamHandler(sys.stdout)])
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--from-csv", metavar="PATH", help="Fidelity positions export to load")
+    ap.add_argument("--from-snaptrade", action="store_true",
+                    help="pull live positions via SnapTrade (requires --portfolio real)")
     ap.add_argument("--portfolio", choices=["demo", "real"], required=True)
     ap.add_argument("--as-of", type=date.fromisoformat, default=None,
                     help="batch date (default: today)")
@@ -135,11 +233,19 @@ def main() -> None:
                     help="also load this private fund-classification CSV")
     args = ap.parse_args()
 
+    if args.from_csv and args.from_snaptrade:
+        ap.error("choose one of --from-csv / --from-snaptrade, not both")
+
     client = build_bigquery_client()
-    if args.from_csv:
+    if args.from_snaptrade:
+        if args.portfolio != "real":
+            ap.error("--from-snaptrade requires --portfolio real")
+        rows = fetch_snaptrade_positions()
+        _load_positions(client, rows, args.portfolio, args.as_of, source="snaptrade")
+    elif args.from_csv:
         ingest_holdings_csv(client, args.from_csv, args.portfolio, args.as_of)
     else:
-        ap.error("--from-csv is required (SnapTrade mode arrives in a later task)")
+        ap.error("one of --from-csv / --from-snaptrade is required")
     if args.fund_classifications:
         ingest_fund_classifications(client, args.fund_classifications)
 
