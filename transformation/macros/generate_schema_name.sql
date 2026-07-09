@@ -19,6 +19,12 @@
 
         {{ custom_schema_name | trim }}
 
+    {%- elif target.name == 'prod-private' and custom_schema_name is not none -%}
+
+        {# Private mirror of the prod layout: anchor_marts -> anchor_marts_private.
+           Full layer isolation so nothing public-facing ever reads these. #}
+        {{ custom_schema_name | trim }}_private
+
     {%- else -%}
 
         {{ default_schema }}

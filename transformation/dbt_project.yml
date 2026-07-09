@@ -55,6 +55,9 @@ vars:
   # Trailing window (months) for the macro indicator sparklines.
   macro_trend_months: 12
 
+on-run-start:
+  - "{{ assert_portfolio_isolation() }}"
+
 # Custom schemas are honored in prod only (see macros/generate_schema_name.sql).
 # In dev everything collapses into the personal sandbox dataset; in prod these
 # route to anchor_staging / anchor_intermediate / anchor_marts — the named

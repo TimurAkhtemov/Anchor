@@ -9,7 +9,7 @@
 # (or the local keyfile); FRED ingestion reads FRED_API_KEY. dbt target/profile
 # is resolved by the caller's env (local ~/.dbt vs CI's DBT_PROFILES_DIR=ci).
 
-.PHONY: help ingest deps build-prod snapshot refresh dagster
+.PHONY: help ingest deps build-prod ingest-holdings-demo ingest-holdings-real build-private snapshot refresh dagster
 
 # dbt engine for LOCAL work = dbt-fusion (the global binary). CI uses dbt-core
 # 1.11 as the stable gate (see .github/workflows/ci.yml). Override with `make DBT=...`.
@@ -29,6 +29,16 @@ deps:  ## Install dbt packages
 
 build-prod: deps  ## dbt build + test into the prod marts (anchor_* datasets)
 	cd transformation && $(DBT) build --target prod
+
+ingest-holdings-demo:  ## Load the committed sample portfolio -> raw_holdings.holdings_demo
+	python ingestion/ingest_holdings.py --from-csv data/sample_portfolio.csv --portfolio demo
+
+ingest-holdings-real:  ## Load a real Fidelity export + private fund classes (data/private/, gitignored)
+	python ingestion/ingest_holdings.py --from-csv data/private/fidelity_positions.csv --portfolio real \
+		--fund-classifications data/private/fund_classifications_real.csv
+
+build-private: deps  ## dbt build the REAL portfolio into the anchor_*_private datasets
+	cd transformation && $(DBT) build --target prod-private --vars '{holdings_source: real}'
 
 snapshot:  ## Export prod marts -> committed parquet (app/snapshot/)
 	python app/export_snapshot.py
