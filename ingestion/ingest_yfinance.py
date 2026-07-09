@@ -6,6 +6,7 @@ import logging
 import pandas as pd
 from datetime import datetime, UTC
 from pathlib import Path
+from zoneinfo import ZoneInfo
 import yfinance as yf
 from dotenv import load_dotenv
 from google.api_core.exceptions import NotFound
@@ -176,6 +177,19 @@ def ingest_yfinance(bq_client) -> dict:
     df_prices['close'] = pd.to_numeric(df_prices['close'], errors='coerce')
     df_prices['volume'] = pd.to_numeric(df_prices['volume'], errors='coerce').astype('Int64')  # Nullable Int
     df_prices['ingested_at'] = pd.to_datetime(df_prices['ingested_at'])
+
+    # EOD product: a trading session's bars are only trustworthy once the session
+    # has settled (equity closes final at 16:00 ET; mutual-fund NAVs post ~18:00).
+    # Ingesting mid-session would advance the common as-of calendar onto a partial
+    # day that funds can't have yet — so before 18:30 ET, today's bars are dropped.
+    now_et = datetime.now(ZoneInfo("America/New_York"))
+    if (now_et.hour, now_et.minute) < (18, 30):
+        before = len(df_prices)
+        df_prices = df_prices[df_prices["date"] < now_et.date()]
+        logger.info(
+            f"Dropped {before - len(df_prices)} in-progress session bars dated {now_et.date()} "
+            "(session not settled until 18:30 ET)"
+        )
 
     # Define Explicit Schemas
     schema_meta = [
