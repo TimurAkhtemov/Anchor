@@ -212,6 +212,11 @@ say.
   alts like an employer-plan target-date fund have no public price series at all) — both
   show in `portfolio_composition` (weight, value) with an explicit "not benchmarked" line,
   never silently.
+- **Cost basis aggregates across accounts by summing, which treats nulls as zero.**
+  A ticker held in two accounts where one has a tracked cost basis and the other
+  doesn't (e.g. a retirement account that doesn't report it) sums to just the
+  tracked figure — understating true cost basis and therefore overstating
+  `unrealized_gain_pct` for that holding.
 - **Duration buckets are hand-assigned per fund.** `sub_style` (short/intermediate/long)
   for bond funds comes from the same maintained classification mapping as `asset_class`
   — no metadata source derives a duration bucket automatically.

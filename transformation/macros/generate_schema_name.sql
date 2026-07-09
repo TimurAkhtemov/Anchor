@@ -1,6 +1,6 @@
 -- Environment-aware schema routing (the dbt-fundamentals "custom schemas" pattern).
 --
--- dev  (target.name != 'prod'): IGNORE custom schemas -> everything lands in the
+-- dev  (any other target): IGNORE custom schemas -> everything lands in the
 --      developer's single sandbox dataset (dbt_timurakhtemov). Keeps local
 --      iteration in one place; no anchor_* datasets cluttering the sandbox.
 -- prod (target.name == 'prod'): use the model's custom +schema AS-IS (no

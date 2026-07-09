@@ -165,6 +165,17 @@ auto-sync; solved by scheduled pulls later).
   '{holdings_source: real}'`. CI and the Dagster daily graph stay demo by default.
 - Snapshot exporter (`app/export_snapshot.py`) is untouched: it reads
   `anchor_marts` only. No filter to forget.
+- **Boundary worth stating plainly:** the yfinance bronze/staging layer (and the SCD2
+  ticker snapshot built off it) is *not* holdings_source-gated — `ingest_yfinance.py`
+  always derives the ticker universe from both `holdings_demo` and `holdings_real`, so
+  `raw_yfinance_tickers`, `stg_yfinance__tickers`, and `snap_yfinance_tickers` (even the
+  copy that lands in the nominally-public `anchor_snapshots` schema under `prod`) carry
+  metadata — company name, sector, market cap — for real-portfolio tickers too. The
+  privacy guarantee this design ships is **"nothing in the repo or the public deploy,"**
+  not "nothing in any shared BigQuery dataset": those tables live in a private,
+  credential-gated BigQuery project the public repo and Streamlit Cloud demo never read
+  from, so the guarantee holds, but it's a narrower claim than dataset-level isolation
+  end to end.
 
 ## Serve layer
 

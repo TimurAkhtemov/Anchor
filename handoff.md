@@ -207,6 +207,19 @@ Private inputs (never committed): `data/private/fidelity_positions.csv` +
 `data/private/fund_classifications_real.csv`, both gitignored; SnapTrade secrets live in
 `.env` (also gitignored).
 
+**EOD ingestion + incremental staging (operational note).** `ingest_yfinance.py` drops
+any in-progress session bars before 18:30 ET — the common as-of calendar (anchored to the
+benchmark ETF set) must never advance onto a partial trading day. Sharp edge:
+`stg_yfinance__prices` is an incremental BigQuery merge, and merges never delete rows
+removed upstream — so if a partial bar ever does land there (a stale run, a manual
+override), the model won't self-heal on the next normal run. The symptom shows up
+downstream, not at ingestion: a benchmark ETF's `as_of_date` advances past what other
+tickers have a complete close for, pushing some holdings to `valuation_source = 'source'`
+and tripping `assert_source_valuation_is_intentional` (equity/fixed_income should never be
+source-valued). The remediation is a one-time
+`dbt build --select stg_yfinance__prices --full-refresh` to purge the stale rows and
+rebuild the incremental table clean.
+
 **Honest deviations from the locked design** (the point of surfacing them — see
 `docs/make_it_real_design.md` for the original spec):
 - **SnapTrade became the primary real-data transport.** The CSV path was sequenced first
@@ -227,8 +240,10 @@ Private inputs (never committed): `data/private/fidelity_positions.csv` +
 
 **Verified:** `dbt build` green in both worlds (140/140 demo; real-world spot-check green
 too); app checked in both demo and real mode; snapshot re-exported and inspected —
-demo-tickers-only, confirmed by a dedicated singular assertion against the exported
-parquet files; CI green on push.
+demo-tickers-only, now enforced by a dedicated pytest assertion against the exported
+parquet files (`tests/app/test_snapshot_privacy.py`). CI triggers only on PRs and pushes
+to `main` — not on pushes to this feature branch — so the dbt-core build gates this
+branch at the PR, and hasn't actually been observed green against it yet.
 
 ## Recommended next session (decided 2026-06-16) — a dbt-depth pass
 
