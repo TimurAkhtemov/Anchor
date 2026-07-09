@@ -19,12 +19,20 @@ with prices as (
 ),
 
 -- Distinct market trading calendar; most-recent session = 1.
+-- Anchored to the benchmark ETFs only: the liquid benchmark set DEFINES the
+-- market calendar. A holding's oddball bar (e.g. a money-market NAV stamped
+-- ahead of the market's last complete close) must not move the common
+-- as-of date for everyone else.
 calendar as (
 
     select
         trading_date,
         row_number() over (order by trading_date desc) as days_ago
-    from (select distinct trading_date from prices)
+    from (
+        select distinct trading_date
+        from prices
+        where ticker in (select etf_ticker from {{ ref('benchmark_etfs') }})
+    )
 
 ),
 
