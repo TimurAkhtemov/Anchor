@@ -7,6 +7,8 @@
 --      dbt_user_ prefix), so models route to anchor_staging / anchor_intermediate /
 --      anchor_marts / anchor_seeds. Models without a custom schema fall to the
 --      prod target's default dataset (`anchor`).
+-- prod-private (target.name == 'prod-private'): same custom-schema layout with a
+--      _private suffix (anchor_marts_private, ...) — the real-portfolio mirror.
 --
 -- This is what lets the serve layer + scheduled CI build read a stable, named
 -- contract (anchor_marts) instead of a personal sandbox.
