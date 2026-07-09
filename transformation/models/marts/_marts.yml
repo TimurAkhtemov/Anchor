@@ -319,7 +319,7 @@ models:
           - not_null
           - accepted_values:
               arguments:
-                values: ['equity', 'fixed_income', 'cash']
+                values: ['equity', 'fixed_income', 'commodity', 'cash', 'alt']
       - name: quote_type
         data_type: string
         description: yfinance quoteType; null for the CASH pseudo-ticker.
@@ -334,12 +334,20 @@ models:
         description: Close on the common as-of date; null for unpriced cash rows.
       - name: market_value
         data_type: float64
-        description: quantity x latest close (cash - source value).
+        description: quantity x latest close (source-valued rows keep the import's value).
         data_tests: [not_null]
       - name: weight_pct
         data_type: float64
         description: Share of total portfolio market value, in percent.
         data_tests: [not_null]
+      - name: valuation_source
+        data_type: string
+        description: market = marked to market from public prices; source = valued from the holdings import (cash NAV, plan-internal funds).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['market', 'source']
       - name: cost_basis
         data_type: float64
         description: Total cost basis from the source; null for cash.

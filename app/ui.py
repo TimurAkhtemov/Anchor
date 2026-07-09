@@ -24,9 +24,11 @@ DIR_COLOR = {"up": UP, "down": DOWN, "flat": FLAT}
 # Asset-class identity (allocation bar + class dots). Fixed assignment, never
 # cycled; deliberately distinct from the reserved semantic colors (green/red =
 # performance verdicts, orange/blue = macro direction). Palette validated for
-# lightness / chroma / CVD separation / contrast (dataviz six-checks, 2026-07-01).
-ASSET_CLASS_COLORS = {"equity": "#0d9488", "fixed_income": "#7c3aed", "cash": "#b45309"}
-ASSET_CLASS_LABELS = {"equity": "Equities", "fixed_income": "Fixed income", "cash": "Cash"}
+# lightness / chroma / CVD separation / contrast (dataviz six-checks; 4 slots,
+# validated 2026-07-09). "alt" is slate on purpose — an identity-less
+# catch-all; its label carries the identity.
+ASSET_CLASS_COLORS = {"equity": "#0d9488", "fixed_income": "#7c3aed", "commodity": "#db2777", "cash": "#b45309", "alt": "#64748b"}
+ASSET_CLASS_LABELS = {"equity": "Equities", "fixed_income": "Fixed income", "commodity": "Commodities", "cash": "Cash", "alt": "Other"}
 
 # Regime-state coloring: orange = hot/tightening pressure, blue = cooling/easing
 # pressure, gray = neutral. Economically coherent (hot vs cool), not a verdict.

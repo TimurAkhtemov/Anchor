@@ -90,14 +90,15 @@ models:
 
   - name: int_holdings_classified
     description: >
-      One classified, valued row per held ticker: asset_class (quote_type spine
-      + fund mapping), cap_tier (equities only), live market value, portfolio
-      weight, unrealized gain. Grain: one row per ticker.
+      One classified, valued row per held ticker: asset_class (fund-mapping
+      override over the quote_type spine), cap_tier (equities only), dual-source
+      valuation (market vs source), portfolio weight, unrealized gain.
+      Grain: one row per ticker.
     columns:
       - name: ticker
         data_tests: [unique, not_null]
       - name: asset_class
-        description: equity / fixed_income / cash (commodity, alt reserved). Null = unclassified fund (guardrail fails the build).
+        description: equity / fixed_income / commodity / cash / alt. Explicit fund mapping overrides derivation. Null = unclassified fund (guardrail fails the build).
         data_tests:
           - accepted_values:
               arguments:
@@ -108,8 +109,18 @@ models:
           - accepted_values:
               arguments:
                 values: ['Large', 'Mid', 'Small']
+      - name: valuation_source
+        description: >
+          market = marked to market from the public price series; source = the
+          import's own value (cash NAV, plan-internal funds with no public
+          price). The flag makes the fallback visible instead of incidental.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['market', 'source']
       - name: market_value
-        description: quantity x latest close (cash - source value).
+        description: quantity x latest close (source-valued rows keep the import's value).
         data_tests: [not_null]
       - name: weight_pct
         description: Share of total portfolio market value, in percent.

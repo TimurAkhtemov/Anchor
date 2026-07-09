@@ -1,11 +1,14 @@
 -- One classified, valued row per held ticker (aggregated across accounts).
--- Classification: quote_type is the spine (EQUITY -> equity, MONEYMARKET ->
--- cash); funds (ETF/MUTUALFUND) come from the maintained mapping because no
--- metadata source can classify fund contents. cap_tier is computed ONLY for
+-- Classification: the maintained fund mapping is a true OVERRIDE — explicit
+-- human classification wins over derivation, whatever the quote_type. The
+-- derived fallback uses quote_type as the spine (EQUITY -> equity,
+-- MONEYMARKET -> cash); funds have no derived class because no metadata
+-- source can classify fund contents. cap_tier is computed ONLY for
 -- individual equities — funds have null market_cap and must never inherit a
 -- cap tier (the old `else 'Small'` bug).
--- Valuation: market_value = quantity x latest close so weights stay fresh
--- between imports; cash keeps its source value (fixed $1 NAV, no price series).
+-- Valuation is explicitly dual-source (valuation_source): market-valued rows
+-- get quantity x latest close so weights stay fresh between imports;
+-- source-valued rows keep the source's value.
 
 with positions as (
 
@@ -50,12 +53,14 @@ classified as (
         m.sector,
         m.market_cap,
         m.quote_type,
-        case
-            when p.ticker = 'CASH'                       then 'cash'
-            when m.quote_type = 'MONEYMARKET'            then 'cash'
-            when m.quote_type = 'EQUITY'                 then 'equity'
-            when m.quote_type in ('ETF', 'MUTUALFUND')   then f.asset_class
-        end as asset_class,
+        coalesce(
+            f.asset_class,
+            case
+                when p.ticker = 'CASH'            then 'cash'
+                when m.quote_type = 'MONEYMARKET' then 'cash'
+                when m.quote_type = 'EQUITY'      then 'equity'
+            end
+        ) as asset_class,
         f.sub_style,
         case
             when m.quote_type = 'EQUITY' then
@@ -77,15 +82,31 @@ classified as (
 
 ),
 
+sourced as (
+
+    -- source-valued = the instrument can't be marked to market from public
+    -- prices (cash NAV, plan-internal funds); the flag makes the fallback
+    -- visible instead of incidental (the SPAXX lesson).
+    select
+        *,
+        case
+            when asset_class = 'cash'   then 'source'
+            when latest_close is null   then 'source'
+            else 'market'
+        end as valuation_source
+    from classified
+
+),
+
 valued as (
 
     select
         *,
         case
-            when asset_class = 'cash' then coalesce(source_market_value, quantity)
+            when valuation_source = 'source' then coalesce(source_market_value, quantity)
             else round(quantity * latest_close, 2)
         end as market_value
-    from classified
+    from sourced
 
 )
 

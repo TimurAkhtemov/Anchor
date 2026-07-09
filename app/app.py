@@ -171,7 +171,7 @@ AXIS_LABELS = {
     "duration": "Duration",
 }
 # Reading order within the tier: growth assets, then rate-driven, then cash.
-ASSET_CLASS_ORDER = ["equity", "fixed_income", "cash"]
+ASSET_CLASS_ORDER = ["equity", "fixed_income", "commodity", "alt", "cash"]
 
 
 def render_holdings(hkey: str):
@@ -237,6 +237,9 @@ def _render_holding_card(h, hb, hold_col, bench_col, rel_col, lab_col):
                 chips = [ui.chip(f"{h['sub_style']} duration")]
             if h["is_root"]:
                 chips.append(ui.chip("market root", fg=ui.TEAL, bg="#cffafe"))
+            # honest badge for anything not marked to market from public prices
+            if h.get("valuation_source") == "source":
+                chips.append(ui.chip("source-valued"))
             st.markdown(
                 f"**{h['ticker']}**  ·  {h['description']}  " + " ".join(chips),
                 unsafe_allow_html=True,

@@ -32,6 +32,7 @@ select
     h.latest_close,
     h.market_value,
     h.weight_pct,
+    h.valuation_source,
     h.cost_basis_total   as cost_basis,
     h.unrealized_gain_pct,
     coalesce(r.n_self, 0) > 0 and coalesce(r.n_benchmarks, 0) = 0 as is_root,
