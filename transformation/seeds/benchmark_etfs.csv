@@ -10,7 +10,7 @@ sector,Consumer Defensive,XLP,Consumer Staples Select Sector SPDR Fund
 sector,Utilities,XLU,Utilities Select Sector SPDR Fund
 sector,Real Estate,XLRE,Real Estate Select Sector SPDR Fund
 sector,Basic Materials,XLB,Materials Select Sector SPDR Fund
-cap_style,Large,SPY,SPDR S&P 500 ETF Trust
+cap_style,Large,SPY,State Street SPDR S&P 500 ETF Trust
 cap_style,Mid,MDY,SPDR S&P MidCap 400 ETF Trust
 cap_style,Small,IWM,iShares Russell 2000 ETF
 market,equity,SPY,State Street SPDR S&P 500 ETF Trust

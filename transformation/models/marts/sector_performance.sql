@@ -2,9 +2,9 @@
 -- co-movement with the 10-year yield. Read underneath the macro_regime banner
 -- (a singleton the UI renders above this list) and above the holdings tier.
 --
--- Only the sector ETFs we ingest appear (currently XLK/XLF/XLE/XLV/XLI -- the
--- ones backing current holdings). Broadening to all 11 SPDR sectors is a
--- ticker-config + ingestion change, not a model change.
+-- All 11 SPDR sector ETFs are ingested (the yfinance universe derives from the
+-- benchmark_etfs seed ∪ held tickers), so this mart is a complete sector map,
+-- not scoped to current holdings' sectors.
 --
 -- Grain: one row per sector ETF.
 

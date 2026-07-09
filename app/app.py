@@ -279,6 +279,12 @@ def _render_holding_card(h, hb, hold_col, bench_col, rel_col, lab_col):
                 f"market reference point — other holdings are compared against it.</span>",
                 unsafe_allow_html=True,
             )
+        elif benches.empty:
+            st.markdown(
+                f"<span style='color:{ui.SLATE};font-size:0.85rem'>Not benchmarked — "
+                f"v1 displays this asset class without a comparison.</span>",
+                unsafe_allow_html=True,
+            )
 
 
 def _render_cash_row(h):

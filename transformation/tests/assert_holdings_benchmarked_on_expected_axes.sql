@@ -1,8 +1,12 @@
 -- Guardrail: every non-cash holding resolves the number of benchmark axes its
 -- asset class prescribes (equity stock = 2, equity fund = 1, fixed income =
 -- 1 + duration-if-mapped), where self-suppressed pairings (roots) count as
--- resolved. Catches seed drift, taxonomy renames, and unmapped sub_styles
--- before they silently drop a comparison.
+-- resolved. Commodity and alt holdings intentionally expect 0 axes (v1 has no
+-- routing branch for them — the `else 0` below) and are display-only in
+-- portfolio_composition; this guardrail is what keeps that "unbenchmarked"
+-- state a deliberate no-op instead of a silently dropped comparison. Catches
+-- seed drift, taxonomy renames, and unmapped sub_styles before they silently
+-- drop a comparison.
 
 with holdings as (
 
