@@ -1,7 +1,7 @@
 -- Per-ticker scalar returns, computed for every ticker (holdings + ETFs)
 -- so the holdings mart can join the same source for both sides of a
 -- comparison. All returns are measured to a single common as-of date
--- (max trading_date across the whole market calendar) so a holding and
+-- (max trading_date across the benchmark-ETF trading calendar) so a holding and
 -- its benchmark are always compared over the identical window.
 
 with prices as (

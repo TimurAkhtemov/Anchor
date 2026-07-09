@@ -30,10 +30,11 @@ models:
 
   - name: holdings_benchmarks
     description: >
-      Holdings-tier mart. Each holding paired with both benchmarks (sector +
-      cap-style), holding% and benchmark% computed together as one row per
-      pairing, with the relative position (pp) and an ahead/behind/in_line
-      label per horizon. Grain: one row per (holding_ticker, benchmark_type).
+      Holdings-tier mart. Each holding paired with its asset-class-appropriate
+      benchmark set (routed in int_benchmark_routing), holding% and benchmark%
+      computed together as one row per pairing, with the relative position (pp)
+      and an ahead/behind/in_line label per horizon. Cash and self-pairings
+      (root holdings) are excluded. Grain: one row per (holding_ticker, benchmark_type).
     config:
       contract:
         enforced: true
@@ -56,11 +57,25 @@ models:
       - name: company_name
         data_type: string
         description: Holding company name from yfinance.
+      - name: asset_class
+        data_type: string
+        description: equity / fixed_income — the routing class (cash never appears here).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['equity', 'fixed_income']
+      - name: quote_type
+        data_type: string
+        description: yfinance quoteType (EQUITY / ETF / MUTUALFUND) — instrument form.
+      - name: weight_pct
+        data_type: float64
+        description: Holding's share of total portfolio market value, in percent.
+        data_tests:
+          - not_null
       - name: sector
         data_type: string
         description: Holding's live yfinance sector (Yahoo taxonomy). Sector-axis join key.
-        data_tests:
-          - not_null
       - name: market_cap
         data_type: int64
         description: Holding's yfinance market capitalization in USD.
@@ -68,7 +83,6 @@ models:
         data_type: string
         description: Derived cap tier (Large >=$10B, Mid $2-10B, Small <$2B). Cap-style-axis join key.
         data_tests:
-          - not_null
           - accepted_values:
               arguments:
                 values: ['Large', 'Mid', 'Small']
@@ -79,7 +93,7 @@ models:
           - not_null
           - accepted_values:
               arguments:
-                values: ['sector', 'cap_style']
+                values: ['sector', 'cap_style', 'market', 'bond_market', 'duration']
       - name: benchmark_etf
         data_type: string
         description: The benchmark ETF for this axis.
@@ -283,3 +297,60 @@ models:
         description: Indicator value at the date (level, or YoY % for inflation).
         data_tests:
           - not_null
+
+  - name: portfolio_composition
+    description: >
+      Sizing mart: one row per held ticker including cash and root holdings —
+      live market value, portfolio weight, unrealized gain, asset class.
+      Grain: one row per ticker.
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: ticker
+        data_type: string
+        data_tests: [unique, not_null]
+      - name: description
+        data_type: string
+        description: Company/fund name (yfinance), or the source description for cash rows.
+      - name: asset_class
+        data_type: string
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['equity', 'fixed_income', 'cash']
+      - name: quote_type
+        data_type: string
+        description: yfinance quoteType; null for the CASH pseudo-ticker.
+      - name: sub_style
+        data_type: string
+        description: "Per-class style axis (bonds: duration bucket); null = axis skipped."
+      - name: quantity
+        data_type: float64
+        description: Shares / units / dollars (money market).
+      - name: latest_close
+        data_type: float64
+        description: Close on the common as-of date; null for unpriced cash rows.
+      - name: market_value
+        data_type: float64
+        description: quantity x latest close (cash - source value).
+        data_tests: [not_null]
+      - name: weight_pct
+        data_type: float64
+        description: Share of total portfolio market value, in percent.
+        data_tests: [not_null]
+      - name: cost_basis
+        data_type: float64
+        description: Total cost basis from the source; null for cash.
+      - name: unrealized_gain_pct
+        data_type: float64
+        description: market_value vs cost_basis, in percent; null for cash / missing basis.
+      - name: is_root
+        data_type: boolean
+        description: True when the holding IS its own benchmark (held SPY/AGG) — display with no comparison.
+        data_tests: [not_null]
+      - name: as_of_date
+        data_type: date
+        description: Batch date of the underlying holdings import.
+        data_tests: [not_null]
