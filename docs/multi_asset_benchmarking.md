@@ -1,6 +1,6 @@
 # Multi-Asset Benchmarking & Holding Taxonomy
 
-_Status: exploratory / deferred. Nothing here is built. Captured 2026-06-10. Shapes the future dynamic-holdings bronze schema and the gold benchmark routing. See also `docs/ingestion_roadmap.md` and `CLAUDE.md` (benchmarking design)._
+_Status: **superseded 2026-07-01** — the open decisions below are resolved in `docs/make_it_real_design.md` (the locked build spec). Kept as design history. Originally captured 2026-06-10. See also `docs/ingestion_roadmap.md` and `CLAUDE.md` (benchmarking design)._
 
 ## The realization
 

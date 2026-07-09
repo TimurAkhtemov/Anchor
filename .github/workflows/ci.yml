@@ -1,7 +1,7 @@
 # CI: build + test the dbt project against BigQuery on every PR and push to main.
 #
 # This is the "does this change break the warehouse" gate — it compiles every
-# model, runs them into an isolated throwaway dataset (dbt_ci), and runs all 92
+# model, runs them into an isolated throwaway dataset (dbt_ci), and runs all 118
 # data tests. Green here means the gold contract still holds.
 #
 # Auth: reads the BigQuery service-account JSON from the BQ_SA_KEY repo secret.
@@ -53,6 +53,14 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+
+      - name: Install pytest deps
+        run: pip install -r ingestion/requirements.txt pandas pyarrow
+
+      - name: Run pytest
+        # Pure-Python tests (CSV parsing, SnapTrade helpers, the snapshot-privacy
+        # invariant against the committed parquet files) — no BigQuery, no secrets.
+        run: python -m pytest tests/ -q
 
       - name: Install dbt
         run: pip install "dbt-bigquery~=1.11.0"

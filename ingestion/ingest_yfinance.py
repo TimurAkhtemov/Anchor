@@ -1,11 +1,15 @@
+import csv
 import os
 import sys
 import time
 import logging
 import pandas as pd
 from datetime import datetime, UTC
+from pathlib import Path
+from zoneinfo import ZoneInfo
 import yfinance as yf
 from dotenv import load_dotenv
+from google.api_core.exceptions import NotFound
 from google.cloud import bigquery
 
 logger = logging.getLogger(__name__)
@@ -17,16 +21,33 @@ PROJECT_ID = "anchor-495115"
 DATASET_ID = "raw_yfinance"
 KEYFILE_PATH = "/Users/timurakhtemov/.dbt/anchor-bigquery-key.json"
 
-# Two benchmark axes + the holdings we benchmark against them.
-# Sector ETFs (SPDR Select Sector) — benchmark axis 1: holding vs its sector
-SECTOR_ETFS = ['XLK', 'XLF', 'XLE', 'XLV', 'XLI']
-# Cap-style ETFs — benchmark axis 2: holding vs its market-cap tier (SPY=large, MDY=mid, IWM=small)
-CAP_STYLE_ETFS = ['SPY', 'MDY', 'IWM']
-# Individual holdings — spread across sectors AND cap tiers so both benchmark axes are exercised.
-# AAPL+IMMR are both Technology but different cap tiers (Large vs Small) — demonstrates the two axes.
-#   AAPL=Tech/Large  JPM=Financials/Large  HIMS=Healthcare/Mid  TALO=Energy/Mid  CVLG=Industrials/Small  IMMR=Tech/Small
-HOLDINGS = ['AAPL', 'JPM', 'HIMS', 'TALO', 'CVLG', 'IMMR']
-TICKERS = SECTOR_ETFS + CAP_STYLE_ETFS + HOLDINGS
+_SEED_PATH = Path(__file__).parent.parent / "transformation" / "seeds" / "benchmark_etfs.csv"
+
+
+def _seed_benchmark_etf_tickers() -> set[str]:
+    """The benchmark ETF universe — read from the dbt seed so Python and dbt
+    can never disagree about which ETFs the models expect prices for."""
+    with open(_SEED_PATH) as f:
+        return {row["etf_ticker"] for row in csv.DictReader(f)}
+
+
+def _held_tickers(bq_client) -> set[str]:
+    """Every ticker held in either portfolio. Prices are public market data,
+    so one shared price table serves both worlds; privacy scoping happens in
+    the marts. Missing tables (fresh env, no real portfolio) are skipped."""
+    held: set[str] = set()
+    for table in ("holdings_demo", "holdings_real"):
+        try:
+            q = f"select distinct ticker from `{PROJECT_ID}.raw_holdings.{table}` where ticker is not null"
+            held |= {row.ticker for row in bq_client.query(q).result()}
+        except NotFound:
+            logger.info(f"raw_holdings.{table} not found; skipping")
+    return held
+
+
+def resolve_universe(bq_client) -> list[str]:
+    return sorted(_seed_benchmark_etf_tickers() | _held_tickers(bq_client))
+
 
 def build_bigquery_client():
     """Build a BigQuery client from the local service-account keyfile, falling
@@ -95,7 +116,9 @@ def ingest_yfinance(bq_client) -> dict:
     metadata_list = []
     prices_dfs = []
 
-    for ticker in TICKERS:
+    tickers = resolve_universe(bq_client)
+    logger.info(f"Resolved ticker universe: {len(tickers)} tickers: {tickers}")
+    for ticker in tickers:
         # 1. Fetch Ticker Info
         info = fetch_ticker_metadata(ticker)
 
@@ -107,6 +130,7 @@ def ingest_yfinance(bq_client) -> dict:
             'market_cap': info.get('marketCap'),  # null for ETFs; used to bucket holdings into cap tiers
             'exchange': info.get('exchange'),
             'currency': info.get('currency'),
+            'quote_type': info.get('quoteType'),  # EQUITY / ETF / MUTUALFUND / MONEYMARKET — the classification spine
             'ingested_at': ingested_at
         })
 
@@ -154,6 +178,19 @@ def ingest_yfinance(bq_client) -> dict:
     df_prices['volume'] = pd.to_numeric(df_prices['volume'], errors='coerce').astype('Int64')  # Nullable Int
     df_prices['ingested_at'] = pd.to_datetime(df_prices['ingested_at'])
 
+    # EOD product: a trading session's bars are only trustworthy once the session
+    # has settled (equity closes final at 16:00 ET; mutual-fund NAVs post ~18:00).
+    # Ingesting mid-session would advance the common as-of calendar onto a partial
+    # day that funds can't have yet — so before 18:30 ET, today's bars are dropped.
+    now_et = datetime.now(ZoneInfo("America/New_York"))
+    if (now_et.hour, now_et.minute) < (18, 30):
+        before = len(df_prices)
+        df_prices = df_prices[df_prices["date"] < now_et.date()]
+        logger.info(
+            f"Dropped {before - len(df_prices)} in-progress session bars dated {now_et.date()} "
+            "(session not settled until 18:30 ET)"
+        )
+
     # Define Explicit Schemas
     schema_meta = [
         bigquery.SchemaField("ticker", "STRING", mode="REQUIRED"),
@@ -163,6 +200,7 @@ def ingest_yfinance(bq_client) -> dict:
         bigquery.SchemaField("market_cap", "INTEGER", mode="NULLABLE"),
         bigquery.SchemaField("exchange", "STRING", mode="NULLABLE"),
         bigquery.SchemaField("currency", "STRING", mode="NULLABLE"),
+        bigquery.SchemaField("quote_type", "STRING", mode="NULLABLE"),
         bigquery.SchemaField("ingested_at", "TIMESTAMP", mode="REQUIRED")
     ]
 

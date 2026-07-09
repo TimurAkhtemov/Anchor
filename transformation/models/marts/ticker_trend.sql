@@ -25,6 +25,20 @@ ranked as (
         row_number() over (partition by ticker order by trading_date desc) as days_ago
     from prices
 
+),
+
+-- Scope to this world's universe: held tickers + benchmark ETFs. Demo marts
+-- (and therefore the public snapshot) must never mention a real-portfolio
+-- ticker; the scoping inherits the world from stg_holdings__positions.
+universe as (
+
+    select ticker from {{ ref('stg_holdings__positions') }}
+    where ticker != 'CASH'
+
+    union distinct
+
+    select etf_ticker as ticker from {{ ref('benchmark_etfs') }}
+
 )
 
 select
@@ -33,3 +47,4 @@ select
     close_price
 from ranked
 where days_ago <= 30
+  and ticker in (select ticker from universe)

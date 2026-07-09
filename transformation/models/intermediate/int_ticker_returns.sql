@@ -1,7 +1,7 @@
 -- Per-ticker scalar returns, computed for every ticker (holdings + ETFs)
 -- so the holdings mart can join the same source for both sides of a
 -- comparison. All returns are measured to a single common as-of date
--- (max trading_date across the whole market calendar) so a holding and
+-- (max trading_date across the benchmark-ETF trading calendar) so a holding and
 -- its benchmark are always compared over the identical window.
 
 with prices as (
@@ -19,12 +19,20 @@ with prices as (
 ),
 
 -- Distinct market trading calendar; most-recent session = 1.
+-- Anchored to the benchmark ETFs only: the liquid benchmark set DEFINES the
+-- market calendar. A holding's oddball bar (e.g. a money-market NAV stamped
+-- ahead of the market's last complete close) must not move the common
+-- as-of date for everyone else.
 calendar as (
 
     select
         trading_date,
         row_number() over (order by trading_date desc) as days_ago
-    from (select distinct trading_date from prices)
+    from (
+        select distinct trading_date
+        from prices
+        where ticker in (select etf_ticker from {{ ref('benchmark_etfs') }})
+    )
 
 ),
 

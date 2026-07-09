@@ -1,0 +1,56 @@
+version: 2
+
+models:
+  - name: stg_holdings__positions
+    description: >
+      Latest position batch for the selected portfolio (holdings_source var).
+      Grain: one row per (account_number, ticker, description); ticker 'CASH'
+      is the pseudo-ticker for cash-in-motion rows with no symbol, and
+      description is what distinguishes multiple such rows within one
+      account (e.g. two different "Pending Activity" lines).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - account_number
+              - ticker
+              - description
+    columns:
+      - name: account_number
+        data_tests: [not_null]
+      - name: ticker
+        description: Held symbol, or the CASH pseudo-ticker.
+        data_tests: [not_null]
+      - name: quantity
+        description: Shares / units / dollars (money market). Null for pending-activity rows.
+      - name: source_market_value
+        description: Value as stated by the source at as_of — audit column; gold recomputes.
+      - name: as_of
+        description: Batch date of the import.
+        data_tests: [not_null]
+      - name: source
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['sample', 'csv', 'snaptrade']
+
+  - name: stg_holdings__fund_classifications
+    description: >
+      Maintained fund-classification mapping (committed demo seed ∪ private
+      real table). Grain: one row per ticker.
+    columns:
+      - name: ticker
+        data_tests: [unique, not_null]
+      - name: asset_class
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['equity', 'fixed_income', 'commodity', 'cash', 'alt']
+      - name: sub_style
+        description: "Per-asset-class style axis value (bonds: duration bucket). Null = skip that axis."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['short', 'intermediate', 'long']

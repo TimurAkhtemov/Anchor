@@ -15,6 +15,7 @@ exposures:
       - ref('macro_trend')
       - ref('sector_performance')
       - ref('holdings_benchmarks')
+      - ref('portfolio_composition')
       - ref('ticker_trend')
     owner:
       name: Timur Akhtemov
@@ -33,6 +34,7 @@ exposures:
       - ref('macro_trend')
       - ref('sector_performance')
       - ref('holdings_benchmarks')
+      - ref('portfolio_composition')
       - ref('ticker_trend')
     owner:
       name: Timur Akhtemov

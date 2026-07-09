@@ -87,3 +87,69 @@ models:
           - not_null
       - name: rate_comovement
         description: Correlation in [-1, 1]; positive = rose with rising yields, negative = fell.
+
+  - name: int_holdings_classified
+    description: >
+      One classified, valued row per held ticker: asset_class (fund-mapping
+      override over the quote_type spine), cap_tier (equities only), dual-source
+      valuation (market vs source), portfolio weight, unrealized gain.
+      Grain: one row per ticker.
+    columns:
+      - name: ticker
+        data_tests: [unique, not_null]
+      - name: asset_class
+        description: equity / fixed_income / commodity / cash / alt. Explicit fund mapping overrides derivation. Null = unclassified fund (guardrail fails the build).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['equity', 'fixed_income', 'commodity', 'cash', 'alt']
+      - name: cap_tier
+        description: Large / Mid / Small — individual equities ONLY; null for funds and cash.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Large', 'Mid', 'Small']
+      - name: valuation_source
+        description: >
+          market = marked to market from the public price series; source = the
+          import's own value (cash NAV, plan-internal funds with no public
+          price). The flag makes the fallback visible instead of incidental.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['market', 'source']
+      - name: market_value
+        description: quantity x latest close (source-valued rows keep the import's value).
+        data_tests: [not_null]
+      - name: weight_pct
+        description: Share of total portfolio market value, in percent.
+        data_tests: [not_null]
+
+  - name: int_benchmark_routing
+    description: >
+      Each non-cash holding resolved to its asset-class-appropriate benchmark
+      set, with self-pairings flagged (is_self) for the root rule. Grain: one
+      row per (holding_ticker, benchmark_type).
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - holding_ticker
+              - benchmark_type
+    columns:
+      - name: holding_ticker
+        data_tests: [not_null]
+      - name: benchmark_type
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['sector', 'cap_style', 'market', 'bond_market', 'duration']
+      - name: benchmark_etf
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_yfinance__tickers')
+                field: ticker

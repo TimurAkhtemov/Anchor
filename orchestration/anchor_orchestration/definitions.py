@@ -1,7 +1,7 @@
 """Anchor Dagster code location — the Definitions object `dagster dev` loads.
 
 The full pipeline as one asset graph:
-    FRED/yfinance (bronze) -> staging -> intermediate -> marts (dbt) -> snapshot
+    holdings_demo/FRED/yfinance (bronze) -> staging -> intermediate -> marts (dbt) -> snapshot
 
 plus a daily post-close schedule over the whole graph (off by default; toggle in
 the UI). v1 runs locally via `make dagster`; Dagster+ Serverless is the follow-up
@@ -16,7 +16,11 @@ from dagster import (
 )
 
 from anchor_orchestration.dbt import anchor_dbt_assets
-from anchor_orchestration.ingestion import ingest_fred_asset, ingest_yfinance_asset
+from anchor_orchestration.ingestion import (
+    ingest_fred_asset,
+    ingest_holdings_demo_asset,
+    ingest_yfinance_asset,
+)
 from anchor_orchestration.resources import bigquery_resource, dbt_resource
 from anchor_orchestration.snapshot import snapshot_parquet
 
@@ -35,6 +39,7 @@ daily_refresh_schedule = ScheduleDefinition(
 defs = Definitions(
     assets=[
         ingest_fred_asset,
+        ingest_holdings_demo_asset,
         ingest_yfinance_asset,
         anchor_dbt_assets,
         snapshot_parquet,

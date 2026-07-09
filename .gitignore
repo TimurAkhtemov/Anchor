@@ -21,3 +21,6 @@ __pycache__/
 anchor-v1.png
 *.png
 .user.yml
+
+# real portfolio inputs — never committed (see docs/make_it_real_design.md)
+data/private/
