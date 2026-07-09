@@ -9,7 +9,7 @@
 # (or the local keyfile); FRED ingestion reads FRED_API_KEY. dbt target/profile
 # is resolved by the caller's env (local ~/.dbt vs CI's DBT_PROFILES_DIR=ci).
 
-.PHONY: help ingest deps build-prod ingest-holdings-demo ingest-holdings-real build-private snapshot refresh dagster
+.PHONY: help ingest deps build-prod ingest-holdings-demo ingest-holdings-real build-private snapshot refresh dagster run-real run-demo
 
 # dbt engine for LOCAL work = dbt-fusion (the global binary). CI uses dbt-core
 # 1.11 as the stable gate (see .github/workflows/ci.yml). Override with `make DBT=...`.
@@ -53,3 +53,10 @@ dagster:  ## Launch the Dagster UI locally (asset graph at http://localhost:3000
 	PATH=$(dir $(DBT)):$$PATH \
 	PYTHONPATH=orchestration \
 	dagster dev -m anchor_orchestration
+
+run-real: ## Run the Streamlit dashboard locally in real mode (live BigQuery)
+	ANCHOR_PORTFOLIO=real ./venv/bin/streamlit run app/app.py
+
+run-demo: ## Run the Streamlit dashboard locally in demo mode (live BigQuery when the keyfile exists)
+	./venv/bin/streamlit run app/app.py
+
