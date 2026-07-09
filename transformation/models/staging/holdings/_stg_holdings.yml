@@ -4,14 +4,17 @@ models:
   - name: stg_holdings__positions
     description: >
       Latest position batch for the selected portfolio (holdings_source var).
-      Grain: one row per (account_number, ticker); ticker 'CASH' is the
-      pseudo-ticker for cash-in-motion rows with no symbol.
+      Grain: one row per (account_number, ticker, description); ticker 'CASH'
+      is the pseudo-ticker for cash-in-motion rows with no symbol, and
+      description is what distinguishes multiple such rows within one
+      account (e.g. two different "Pending Activity" lines).
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns:
               - account_number
               - ticker
+              - description
     columns:
       - name: account_number
         data_tests: [not_null]

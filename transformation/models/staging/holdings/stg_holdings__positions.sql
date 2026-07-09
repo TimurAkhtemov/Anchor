@@ -2,6 +2,11 @@
 -- demo | real, default demo). Bronze appends every load with an as_of batch
 -- date (position history banks for a future time-series milestone); staging
 -- serves only the newest batch, deduped to the latest ingestion within it.
+-- Dedupe partitions on (account_number, ticker, description) rather than
+-- just (account_number, ticker): several no-symbol rows (e.g. Fidelity
+-- "Pending Activity") can share the CASH pseudo-ticker within one account/
+-- batch, and description is what actually distinguishes them — collapsing
+-- on ticker alone would silently drop distinct cash-in-motion rows.
 
 {% set holdings_table = 'holdings_real' if var('holdings_source', 'demo') == 'real' else 'holdings_demo' %}
 
@@ -23,7 +28,7 @@ deduped as (
     select
         *,
         row_number() over (
-            partition by account_number, coalesce(ticker, 'CASH')
+            partition by account_number, coalesce(ticker, 'CASH'), description
             order by ingested_at desc
         ) as rn
     from latest_batch

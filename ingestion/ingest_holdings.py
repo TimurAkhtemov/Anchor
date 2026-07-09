@@ -110,10 +110,12 @@ def ingest_holdings_csv(bq_client, csv_path: str, portfolio: str, as_of: date | 
     return _load_positions(bq_client, rows, portfolio, as_of, source)
 
 
-def _usd_cash_residual(balances: list[dict]) -> float:
+def _usd_cash_total(balances: list[dict]) -> float:
     """Sum USD cash balances only. SnapTrade returns one balance entry per
     currency; blending currencies into one figure would corrupt the cash row.
-    Non-USD balances are skipped with a warning (none expected for Fidelity)."""
+    Non-USD balances are skipped with a warning (none expected for Fidelity).
+    This is the account's total cash balance — the caller derives the
+    residual (cash not already represented by a cash-equivalent position)."""
     total = 0.0
     for b in balances:
         if b.get("cash") is None:
@@ -145,6 +147,7 @@ def fetch_snaptrade_positions() -> list[dict]:
     """
     from dotenv import load_dotenv
     from snaptrade_client import SnapTrade
+    from snaptrade_client.exceptions import OpenApiException
 
     load_dotenv()
     snaptrade = SnapTrade(
@@ -196,7 +199,7 @@ def fetch_snaptrade_positions() -> list[dict]:
             balances = snaptrade.account_information.get_user_account_balance(
                 user_id=uid, user_secret=sec, account_id=account["id"]
             ).body
-            cash_balance = _usd_cash_residual(balances)
+            cash_balance = _usd_cash_total(balances)
             residual = cash_balance - cash_equivalent_value
             if residual > 1.0:  # ignore rounding noise
                 rows.append(
@@ -212,10 +215,13 @@ def fetch_snaptrade_positions() -> list[dict]:
                     }
                 )
         return rows
-    except Exception as exc:  # noqa: BLE001 - deliberately broad to sanitize output
+    except OpenApiException as exc:
         # Never let a raw SnapTrade ApiException escape: its __str__ includes
         # the full HTTP response headers/body. Re-raise with only the
         # exception type + status, same sanitization as snaptrade_connect.py.
+        # Scoped to the SDK's own exception base so our own normalization bugs
+        # above (KeyError, TypeError, ...) propagate with a normal traceback
+        # instead of being swallowed and misreported as an API failure.
         raise RuntimeError(
             f"SnapTrade API call failed: {type(exc).__name__}, status={getattr(exc, 'status', 'n/a')}"
         ) from None

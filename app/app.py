@@ -260,7 +260,13 @@ def _render_holding_card(h, hb, hold_col, bench_col, rel_col, lab_col):
             if not tr.empty:
                 st.altair_chart(ui.price_spark(tr), use_container_width=True)
 
-        benches = hb[hb["holding_ticker"] == h["ticker"]]
+        # Render axes in a stable order (AXIS_LABELS' order) — the mart's row
+        # order isn't guaranteed, and rows reshuffling between refreshes reads
+        # as a bug even when the data hasn't changed.
+        benches = hb[hb["holding_ticker"] == h["ticker"]].copy()
+        axis_order = {axis: i for i, axis in enumerate(AXIS_LABELS)}
+        benches["_axis_order"] = benches["benchmark_type"].map(axis_order)
+        benches = benches.sort_values("_axis_order")
         for _, b in benches.iterrows():
             axis = AXIS_LABELS.get(b["benchmark_type"], b["benchmark_type"])
             c1, c2, c3 = st.columns([2.5, 3, 2])
