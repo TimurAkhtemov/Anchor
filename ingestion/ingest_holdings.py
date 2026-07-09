@@ -110,6 +110,23 @@ def ingest_holdings_csv(bq_client, csv_path: str, portfolio: str, as_of: date | 
     return _load_positions(bq_client, rows, portfolio, as_of, source)
 
 
+def _usd_cash_residual(balances: list[dict]) -> float:
+    """Sum USD cash balances only. SnapTrade returns one balance entry per
+    currency; blending currencies into one figure would corrupt the cash row.
+    Non-USD balances are skipped with a warning (none expected for Fidelity)."""
+    total = 0.0
+    for b in balances:
+        if b.get("cash") is None:
+            continue
+        currency = b.get("currency")
+        code = currency.get("code") if isinstance(currency, dict) else currency
+        if code is not None and code != "USD":
+            logger.warning(f"Skipping non-USD cash balance (currency={code})")
+            continue
+        total += float(b["cash"])
+    return total
+
+
 def fetch_snaptrade_positions() -> list[dict]:
     """Pull live positions for every connected account, normalized to the same
     dict shape parse_fidelity_positions produces.
@@ -137,63 +154,71 @@ def fetch_snaptrade_positions() -> list[dict]:
     uid = os.environ["SNAPTRADE_USER_ID"]
     sec = os.environ["SNAPTRADE_USER_SECRET"]
 
-    rows: list[dict] = []
-    accounts = snaptrade.account_information.list_user_accounts(user_id=uid, user_secret=sec).body
-    for account in accounts:
-        account_number = account.get("number") or account["id"]
-        account_name = account.get("name")
-        positions = snaptrade.account_information.get_user_account_positions(
-            user_id=uid, user_secret=sec, account_id=account["id"]
-        ).body
+    try:
+        rows: list[dict] = []
+        accounts = snaptrade.account_information.list_user_accounts(user_id=uid, user_secret=sec).body
+        for account in accounts:
+            account_number = account.get("number") or account["id"]
+            account_name = account.get("name")
+            positions = snaptrade.account_information.get_user_account_positions(
+                user_id=uid, user_secret=sec, account_id=account["id"]
+            ).body
 
-        cash_equivalent_value = 0.0
-        for p in positions:
-            symbol = (p.get("symbol") or {}).get("symbol") or {}
-            units = p.get("units") if p.get("units") is not None else p.get("fractional_units")
-            price = p.get("price")
-            avg_price = p.get("average_purchase_price")
-            market_value = (
-                float(units) * float(price) if units is not None and price is not None else None
-            )
-            if p.get("cash_equivalent") and market_value is not None:
-                cash_equivalent_value += market_value
-            rows.append(
-                {
-                    "account_number": account_number,
-                    "account_name": account_name,
-                    "ticker": symbol.get("symbol"),
-                    "description": symbol.get("description"),
-                    "quantity": float(units) if units is not None else None,
-                    "price": float(price) if price is not None else None,
-                    "market_value": market_value,
-                    "cost_basis_total": (
-                        float(avg_price) * float(units)
-                        if avg_price is not None and units is not None
-                        else None
-                    ),
-                }
-            )
+            cash_equivalent_value = 0.0
+            for p in positions:
+                symbol = (p.get("symbol") or {}).get("symbol") or {}
+                units = p.get("units") if p.get("units") is not None else p.get("fractional_units")
+                price = p.get("price")
+                avg_price = p.get("average_purchase_price")
+                market_value = (
+                    float(units) * float(price) if units is not None and price is not None else None
+                )
+                if p.get("cash_equivalent") and market_value is not None:
+                    cash_equivalent_value += market_value
+                rows.append(
+                    {
+                        "account_number": account_number,
+                        "account_name": account_name,
+                        "ticker": symbol.get("symbol"),
+                        "description": symbol.get("description"),
+                        "quantity": float(units) if units is not None else None,
+                        "price": float(price) if price is not None else None,
+                        "market_value": market_value,
+                        "cost_basis_total": (
+                            float(avg_price) * float(units)
+                            if avg_price is not None and units is not None
+                            else None
+                        ),
+                    }
+                )
 
-        # Residual cash the positions don't already cover (sweep-less brokers).
-        balances = snaptrade.account_information.get_user_account_balance(
-            user_id=uid, user_secret=sec, account_id=account["id"]
-        ).body
-        cash_balance = sum(float(b["cash"]) for b in balances if b.get("cash") is not None)
-        residual = cash_balance - cash_equivalent_value
-        if residual > 1.0:  # ignore rounding noise
-            rows.append(
-                {
-                    "account_number": account_number,
-                    "account_name": account_name,
-                    "ticker": None,
-                    "description": "Cash balance (SnapTrade)",
-                    "quantity": residual,
-                    "price": 1.0,
-                    "market_value": residual,
-                    "cost_basis_total": None,
-                }
-            )
-    return rows
+            # Residual cash the positions don't already cover (sweep-less brokers).
+            balances = snaptrade.account_information.get_user_account_balance(
+                user_id=uid, user_secret=sec, account_id=account["id"]
+            ).body
+            cash_balance = _usd_cash_residual(balances)
+            residual = cash_balance - cash_equivalent_value
+            if residual > 1.0:  # ignore rounding noise
+                rows.append(
+                    {
+                        "account_number": account_number,
+                        "account_name": account_name,
+                        "ticker": None,
+                        "description": "Cash balance (SnapTrade)",
+                        "quantity": residual,
+                        "price": 1.0,
+                        "market_value": residual,
+                        "cost_basis_total": None,
+                    }
+                )
+        return rows
+    except Exception as exc:  # noqa: BLE001 - deliberately broad to sanitize output
+        # Never let a raw SnapTrade ApiException escape: its __str__ includes
+        # the full HTTP response headers/body. Re-raise with only the
+        # exception type + status, same sanitization as snaptrade_connect.py.
+        raise RuntimeError(
+            f"SnapTrade API call failed: {type(exc).__name__}, status={getattr(exc, 'status', 'n/a')}"
+        ) from None
 
 
 def ingest_fund_classifications(bq_client, csv_path: str) -> int:
