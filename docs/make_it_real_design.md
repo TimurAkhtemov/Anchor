@@ -1,9 +1,10 @@
 # "Make It Real" — Dynamic Holdings + Multi-Asset Benchmarking (v1 Design)
 
-_Status: **locked design, approved 2026-07-01** — supersedes the exploratory
-`docs/holdings_ingestion.md` and `docs/multi_asset_benchmarking.md` (kept as design
-history; their open decisions are resolved here). This is the build spec for the
-"make it real" capstone._
+_Status: **built, 2026-07-09 — see `handoff.md`** ("DONE — make-it-real capstone" for
+what shipped, how to run it, and honest deviations from this spec). Supersedes the
+exploratory `docs/holdings_ingestion.md` and `docs/multi_asset_benchmarking.md` (kept as
+design history; their open decisions are resolved here). This remains the locked build
+spec the capstone shipped against._
 
 ## Goal
 

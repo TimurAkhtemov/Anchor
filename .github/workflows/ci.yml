@@ -1,7 +1,7 @@
 # CI: build + test the dbt project against BigQuery on every PR and push to main.
 #
 # This is the "does this change break the warehouse" gate — it compiles every
-# model, runs them into an isolated throwaway dataset (dbt_ci), and runs all 92
+# model, runs them into an isolated throwaway dataset (dbt_ci), and runs all 118
 # data tests. Green here means the gold contract still holds.
 #
 # Auth: reads the BigQuery service-account JSON from the BQ_SA_KEY repo secret.
