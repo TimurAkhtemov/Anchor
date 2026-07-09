@@ -31,6 +31,7 @@ TABLES = [
     "macro_trend",
     "sector_performance",
     "holdings_benchmarks",
+    "portfolio_composition",
     "ticker_trend",
 ]
 

@@ -163,62 +163,150 @@ def _rate_hint(comove_label: str, rates_state: str) -> str:
 
 # --- tier 3: holdings --------------------------------------------------------
 
+AXIS_LABELS = {
+    "sector": "Sector",
+    "cap_style": "Cap-style",
+    "market": "Market",
+    "bond_market": "Bond market",
+    "duration": "Duration",
+}
+# Reading order within the tier: growth assets, then rate-driven, then cash.
+ASSET_CLASS_ORDER = ["equity", "fixed_income", "cash"]
+
+
 def render_holdings(hkey: str):
+    comp = data.portfolio_composition()
     hb = data.holdings_benchmarks()
     rel_col, lab_col = f"relative_{hkey}_pp", f"label_{hkey}"
     hold_col, bench_col = f"holding_{hkey}_pct", f"benchmark_{hkey}_pct"
 
     st.subheader("Holdings")
-    st.caption("Each holding vs both of its benchmarks (its sector ETF and its cap-style ETF), read under the sectors above.")
+    st.caption(
+        "Your portfolio, sized by weight. Each holding is compared against the "
+        "benchmarks appropriate to its asset class — read under the sectors and "
+        "macro regime above."
+    )
 
+    _render_allocation(comp)
     _render_rollup(hb, lab_col)
 
-    for ticker, grp in hb.groupby("holding_ticker"):
-        head = grp.iloc[0]
-        with st.container(border=True):
-            top_l, top_r = st.columns([3.2, 2])
-            with top_l:
-                st.markdown(
-                    f"**{ticker}**  ·  {head['company_name']}  "
-                    + ui.chip(head["sector"]) + " " + ui.chip(f"{head['cap_tier']}-cap"),
-                    unsafe_allow_html=True,
-                )
-            with top_r:
-                tr = trend_for(ticker)
-                if not tr.empty:
-                    st.altair_chart(ui.price_spark(tr), use_container_width=True)
+    for asset_class in ASSET_CLASS_ORDER:
+        grp = comp[comp["asset_class"] == asset_class]
+        if grp.empty:
+            continue
+        st.markdown(
+            ui.class_dot(asset_class)
+            + f"<span style='font-weight:700'>{ui.ASSET_CLASS_LABELS[asset_class]}</span>"
+            + f"<span style='color:{ui.SLATE};font-size:0.85rem'>"
+            f" · {grp['weight_pct'].sum():.1f}% of portfolio</span>",
+            unsafe_allow_html=True,
+        )
+        for _, h in grp.iterrows():
+            if asset_class == "cash":
+                _render_cash_row(h)
+            else:
+                _render_holding_card(h, hb, hold_col, bench_col, rel_col, lab_col)
 
-            for _, b in grp.iterrows():
-                axis = "Sector" if b["benchmark_type"] == "sector" else "Cap-style"
-                c1, c2, c3 = st.columns([2.5, 3, 2])
-                with c1:
-                    st.markdown(f"{axis}: vs **{b['benchmark_etf']}**")
-                with c2:
-                    st.markdown(
-                        f"{ui.pct(b[hold_col])} vs {ui.pct(b[bench_col])}  "
-                        f"({ui.signed_pp(b[rel_col])})"
-                    )
-                with c3:
-                    st.markdown(ui.pill(b[lab_col]), unsafe_allow_html=True)
+
+def _render_allocation(comp: pd.DataFrame):
+    alloc = comp.groupby("asset_class", as_index=False)["weight_pct"].sum()
+    st.altair_chart(ui.allocation_bar(alloc), use_container_width=True)
+    legend = "&nbsp;&nbsp;".join(
+        ui.class_dot(row["asset_class"])
+        + f"{ui.ASSET_CLASS_LABELS[row['asset_class']]} {row['weight_pct']:.1f}%"
+        for _, row in alloc.sort_values("weight_pct", ascending=False).iterrows()
+    )
+    st.markdown(
+        f"<div style='font-size:0.85rem;color:{ui.SLATE};margin:-6px 0 10px'>{legend}</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def _render_holding_card(h, hb, hold_col, bench_col, rel_col, lab_col):
+    with st.container(border=True):
+        top_l, top_r = st.columns([3.2, 2])
+        with top_l:
+            # equities: sector + cap chips (from the benchmark row, which carries
+            # the classification); bond funds: duration chip; roots: root badge
+            benches = hb[hb["holding_ticker"] == h["ticker"]]
+            chips = []
+            if not benches.empty and benches.iloc[0]["quote_type"] == "EQUITY":
+                head = benches.iloc[0]
+                chips = [ui.chip(head["sector"]), ui.chip(f"{head['cap_tier']}-cap")]
+            elif h["asset_class"] == "fixed_income" and pd.notna(h["sub_style"]):
+                chips = [ui.chip(f"{h['sub_style']} duration")]
+            if h["is_root"]:
+                chips.append(ui.chip("market root", fg=ui.TEAL, bg="#cffafe"))
+            st.markdown(
+                f"**{h['ticker']}**  ·  {h['description']}  " + " ".join(chips),
+                unsafe_allow_html=True,
+            )
+            gain = (
+                ui.colored(ui.pct(h["unrealized_gain_pct"]), ui.ret_color(h["unrealized_gain_pct"]))
+                if pd.notna(h["unrealized_gain_pct"])
+                else "—"
+            )
+            st.markdown(
+                f"<span style='color:{ui.SLATE};font-size:0.85rem'>"
+                f"{h['weight_pct']:.1f}% of portfolio · {ui.money(h['market_value'])} · "
+                f"since purchase: </span>{gain}",
+                unsafe_allow_html=True,
+            )
+        with top_r:
+            tr = trend_for(h["ticker"])
+            if not tr.empty:
+                st.altair_chart(ui.price_spark(tr), use_container_width=True)
+
+        benches = hb[hb["holding_ticker"] == h["ticker"]]
+        for _, b in benches.iterrows():
+            axis = AXIS_LABELS.get(b["benchmark_type"], b["benchmark_type"])
+            c1, c2, c3 = st.columns([2.5, 3, 2])
+            with c1:
+                st.markdown(f"{axis}: vs **{b['benchmark_etf']}**")
+            with c2:
+                st.markdown(
+                    f"{ui.pct(b[hold_col])} vs {ui.pct(b[bench_col])}  "
+                    f"({ui.signed_pp(b[rel_col])})"
+                )
+            with c3:
+                st.markdown(ui.pill(b[lab_col]), unsafe_allow_html=True)
+        if h["is_root"] and benches.empty:
+            st.markdown(
+                f"<span style='color:{ui.SLATE};font-size:0.85rem'>This holding is the "
+                f"market reference point — other holdings are compared against it.</span>",
+                unsafe_allow_html=True,
+            )
+
+
+def _render_cash_row(h):
+    with st.container(border=True):
+        c1, c2 = st.columns([4, 2])
+        with c1:
+            st.markdown(f"**{h['ticker']}**  ·  {h['description']}")
+        with c2:
+            st.markdown(
+                f"{ui.money(h['market_value'])}"
+                f"<span style='color:{ui.SLATE};font-size:0.85rem'> · "
+                f"{h['weight_pct']:.1f}% of portfolio</span>",
+                unsafe_allow_html=True,
+            )
 
 
 def _render_rollup(hb: pd.DataFrame, lab_col: str):
-    """Portfolio-level ahead/behind tally, per benchmark axis, at this horizon."""
-    cols = st.columns(2)
-    for col, (axis_key, axis_name) in zip(cols, [("sector", "Sector axis"), ("cap_style", "Cap-style axis")]):
+    """Ahead/behind tally per benchmark axis present in the portfolio."""
+    axes = [a for a in AXIS_LABELS if a in set(hb["benchmark_type"])]
+    cols = st.columns(max(len(axes), 1))
+    for col, axis_key in zip(cols, axes):
         sub = hb[hb["benchmark_type"] == axis_key]
         counts = sub[lab_col].value_counts()
-        parts = [
-            f"{int(counts.get('ahead', 0))} ahead",
-            f"{int(counts.get('behind', 0))} behind",
-            f"{int(counts.get('in_line', 0))} in line",
-        ]
         with col:
             st.markdown(
-                f"<span style='color:{ui.SLATE};font-size:0.85rem'>{axis_name}: </span>"
-                + ui.colored(parts[0], ui.POS) + "<span style='color:#cbd5e1'> · </span>"
-                + ui.colored(parts[1], ui.NEG) + "<span style='color:#cbd5e1'> · </span>"
-                + ui.colored(parts[2], ui.SLATE),
+                f"<span style='color:{ui.SLATE};font-size:0.85rem'>{AXIS_LABELS[axis_key]} axis: </span>"
+                + ui.colored(f"{int(counts.get('ahead', 0))} ahead", ui.POS)
+                + "<span style='color:#cbd5e1'> · </span>"
+                + ui.colored(f"{int(counts.get('behind', 0))} behind", ui.NEG)
+                + "<span style='color:#cbd5e1'> · </span>"
+                + ui.colored(f"{int(counts.get('in_line', 0))} in line", ui.SLATE),
                 unsafe_allow_html=True,
             )
 

@@ -19,7 +19,11 @@ import streamlit as st
 
 # --- source config ----------------------------------------------------------
 PROJECT = "anchor-495115"
-MARTS_DATASET = "anchor_marts"
+# demo (default) reads the public contract; ANCHOR_PORTFOLIO=real points the
+# live-BigQuery path at the private mirror. The snapshot path is demo-only by
+# construction (the exporter only knows anchor_marts).
+PORTFOLIO = os.environ.get("ANCHOR_PORTFOLIO", "demo")
+MARTS_DATASET = "anchor_marts_private" if PORTFOLIO == "real" else "anchor_marts"
 SNAPSHOT_DIR = Path(__file__).parent / "snapshot"
 _KEY_PATH = os.environ.get(
     "GOOGLE_APPLICATION_CREDENTIALS",
@@ -44,6 +48,12 @@ def _resolve_source() -> str:
 
 
 SOURCE = _resolve_source()
+
+if PORTFOLIO == "real" and SOURCE == "snapshot":
+    raise RuntimeError(
+        "ANCHOR_PORTFOLIO=real requires live BigQuery access; the committed "
+        "snapshot is demo-only by design."
+    )
 
 # Marts refresh post-close (daily), never intraday — an hour TTL is plenty and
 # keeps repeated reruns off the warehouse.
@@ -103,3 +113,7 @@ def holdings_benchmarks() -> pd.DataFrame:
 
 def ticker_trend() -> pd.DataFrame:
     return _read("ticker_trend")
+
+
+def portfolio_composition() -> pd.DataFrame:
+    return _read("portfolio_composition").sort_values("weight_pct", ascending=False)
