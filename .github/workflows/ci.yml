@@ -54,6 +54,14 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install pytest deps
+        run: pip install -r ingestion/requirements.txt pandas pyarrow
+
+      - name: Run pytest
+        # Pure-Python tests (CSV parsing, SnapTrade helpers, the snapshot-privacy
+        # invariant against the committed parquet files) — no BigQuery, no secrets.
+        run: python -m pytest tests/ -q
+
       - name: Install dbt
         run: pip install "dbt-bigquery~=1.11.0"
 
