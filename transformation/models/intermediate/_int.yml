@@ -1,6 +1,36 @@
 version: 2
 
 models:
+  - name: int_market_calendar
+    description: >
+      Single-row shared trading calendar: the reference dates (as-of, prior
+      session, ~1 month, YTD baseline, ~1 year) every horizon comparison in
+      the project anchors to. Derived from the benchmark-ETF set only, so a
+      holding's oddball bar never moves the as-of date for everyone else.
+      Grain: exactly one row.
+    columns:
+      - name: as_of_date
+        description: Common as-of date — most recent complete trading session across the benchmark ETFs.
+        data_tests:
+          - not_null
+          - unique
+      - name: date_prior
+        description: The trading session immediately before as_of_date.
+        data_tests:
+          - not_null
+      - name: date_1m
+        description: ~1 month before as_of_date (21 trading sessions back).
+        data_tests:
+          - not_null
+      - name: date_ytd
+        description: Last trading day of the previous calendar year (YTD baseline).
+        data_tests:
+          - not_null
+      - name: date_1y
+        description: ~1 year before as_of_date (252 trading sessions back).
+        data_tests:
+          - not_null
+
   - name: int_ticker_returns
     description: >
       Per-ticker scalar returns for every ticker (holdings + benchmark ETFs),

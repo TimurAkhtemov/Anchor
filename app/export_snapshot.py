@@ -33,6 +33,7 @@ TABLES = [
     "holdings_benchmarks",
     "portfolio_composition",
     "ticker_trend",
+    "as_of_calendar",
 ]
 
 

@@ -3,9 +3,10 @@ version: 2
 models:
   - name: ticker_trend
     description: >
-      Long sparkline source — the most recent 30 trading sessions per ticker.
-      Grain: one row per ticker per trading_date. The serve layer shapes these
-      into a sparkline.
+      Long sparkline source — the trailing 260 trading sessions per ticker —
+      enough to cover the 1-year horizon window with margin. Grain: one row
+      per ticker per trading_date. The serve layer shapes these into a
+      sparkline.
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -27,6 +28,34 @@ models:
           - not_null
       - name: close_price
         description: Closing price (split/dividend adjusted).
+
+  - name: as_of_calendar
+    description: >
+      Serve-layer window endpoints — the same reference dates int_ticker_returns
+      uses to compute holding/benchmark returns. The app windows sparklines to
+      these dates so a trend line can never contradict the return% beside it.
+      Grain: exactly one row.
+    columns:
+      - name: as_of_date
+        description: Common as-of date — most recent complete trading session across the benchmark ETFs.
+        data_tests:
+          - not_null
+      - name: date_prior
+        description: The trading session immediately before as_of_date.
+        data_tests:
+          - not_null
+      - name: date_1m
+        description: ~1 month before as_of_date (21 trading sessions back).
+        data_tests:
+          - not_null
+      - name: date_ytd
+        description: Last trading day of the previous calendar year (YTD baseline).
+        data_tests:
+          - not_null
+      - name: date_1y
+        description: ~1 year before as_of_date (252 trading sessions back).
+        data_tests:
+          - not_null
 
   - name: holdings_benchmarks
     description: >
