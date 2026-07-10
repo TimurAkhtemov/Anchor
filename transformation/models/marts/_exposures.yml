@@ -17,6 +17,7 @@ exposures:
       - ref('holdings_benchmarks')
       - ref('portfolio_composition')
       - ref('ticker_trend')
+      - ref('as_of_calendar')
     owner:
       name: Timur Akhtemov
       email: timur.akhtemov@gmail.com
@@ -36,6 +37,7 @@ exposures:
       - ref('holdings_benchmarks')
       - ref('portfolio_composition')
       - ref('ticker_trend')
+      - ref('as_of_calendar')
     owner:
       name: Timur Akhtemov
       email: timur.akhtemov@gmail.com

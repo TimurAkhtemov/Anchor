@@ -1,7 +1,8 @@
--- Long sparkline source: the most recent 30 trading sessions (bars) per
--- ticker. One row per ticker per trading_date; the serve layer shapes
--- these into a sparkline (a line, not bars). Covers every ticker so any
--- tier (holding or benchmark ETF) can render a trend.
+-- Long sparkline source: the trailing 260 trading sessions (bars) per
+-- ticker -- enough to cover the 1-year horizon window with margin. One row
+-- per ticker per trading_date; the serve layer shapes these into a
+-- sparkline (a line, not bars). Covers every ticker so any tier (holding or
+-- benchmark ETF) can render a trend.
 
 with prices as (
 
@@ -46,5 +47,5 @@ select
     trading_date,
     close_price
 from ranked
-where days_ago <= 30
+where days_ago <= 260
   and ticker in (select ticker from universe)

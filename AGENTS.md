@@ -2,33 +2,33 @@
 
 ## Project Structure & Module Organization
 
-Anchor is a macro-aware investment dashboard with a bronze -> silver -> gold -> serve flow. Source ingestion lives in `ingestion/` (`ingest_fred.py`, `ingest_yfinance.py`). The dbt project is under `transformation/`, with `models/staging/`, `models/intermediate/`, `models/marts/`, `macros/`, `seeds/`, and singular tests in `tests/`. Dagster orchestration lives in `orchestration/anchor_orchestration/`. The Streamlit app is in `app/`, with `app/data.py` as the data-source seam, `app/ui.py` for shared visuals, and committed parquet snapshots in `app/snapshot/`. Design notes and roadmap material belong in `docs/`.
+Anchor follows a bronze -> silver -> gold -> serve flow. Python ingestion lives in `ingestion/`; demo holdings are in `data/`, while real inputs belong in gitignored `data/private/`. The dbt project under `transformation/` contains staging, intermediate, and mart models, plus macros, seeds, snapshots, and SQL tests. Dagster assets live in `orchestration/anchor_orchestration/`. The Streamlit app is in `app/`: data access stays behind `data.py`, shared visuals in `ui.py`, and committed demo parquet files in `snapshot/`. Python tests are under `tests/`; design material belongs in `docs/`.
 
 ## Build, Test, and Development Commands
 
-- `make help`: list available pipeline targets.
-- `make ingest`: load FRED and yfinance bronze tables into BigQuery.
-- `make deps`: install dbt packages from `transformation/packages.yml`.
-- `make build-prod`: run `dbt build --target prod` into the `anchor_*` datasets.
-- `make snapshot`: export prod marts into `app/snapshot/`.
-- `make refresh`: run ingestion, dbt build, and snapshot export.
-- `streamlit run app/app.py`: run the dashboard locally.
-- `make dagster`: launch the local Dagster UI at `localhost:3000`.
+- `make ingest-holdings-demo`: load `data/sample_portfolio.csv` into the demo source.
+- `make ingest`: refresh FRED and yfinance bronze tables in BigQuery.
+- `make build-prod`: install dbt packages, build models, and test public prod datasets.
+- `make refresh`: run market ingestion, the public prod build, and snapshot export; load holdings separately when needed.
+- `make ingest-holdings-real && make build-private`: load private inputs and build isolated `anchor_*_private` datasets.
+- `python -m pytest tests/ -q`: run ingestion helper and snapshot-privacy tests.
+- `make run-demo` / `make run-real`: launch Streamlit in demo or private mode.
+- `make dagster`: launch the asset graph at `http://localhost:3000`.
 
-Run ad hoc dbt commands from `transformation/`, for example `dbt build --select marts`.
+Run dbt commands from `transformation/`; dbt Fusion can mishandle seeds with `--project-dir`. Example: `dbt build --select marts`. CI uses dbt Core 1.11 and Python 3.12.
 
 ## Coding Style & Naming Conventions
 
-Use Python 3.12 style with 4-space indentation, clear function names, and small modules. Keep UI reads behind `app/data.py`; the app should consume framed marts, not join raw sources. dbt models use layer prefixes: `stg_source__entity.sql`, `int_subject.sql`, and mart names such as `holdings_benchmarks.sql`. YAML files colocated with models document sources, tests, and model contracts.
+Use 4-space indentation, small Python modules, `snake_case` names, and comments only for non-obvious behavior. No formatter is enforced; match nearby code. UI code should consume framed marts, not join raw sources. Name dbt models by layer: `stg_yfinance__prices.sql`, `int_ticker_returns.sql`, and `holdings_benchmarks.sql`. Colocate model contracts and tests in YAML.
 
 ## Testing Guidelines
 
-The main quality gate is `dbt build`, which runs models and tests together. Preserve grain and relationship tests in schema YAML, and add singular guardrail tests under `transformation/tests/` when a business invariant must fail the build. For app changes, run `streamlit run app/app.py` and verify the dashboard still reads through the configured data source.
+Name pytest functions `test_<behavior>`. Preserve dbt grain, relationship, and contract tests; add singular guardrails under `transformation/tests/` for business invariants. Validate warehouse changes with `dbt build` and dashboard changes in snapshot/demo plus affected live modes. Privacy changes must retain the committed-snapshot test.
 
 ## Commit & Pull Request Guidelines
 
-Git history uses short, scoped messages such as `chore(dbt): ...`, `docs(handoff): ...`, `ci: ...`, and `refactor: ...`. Keep commits focused on one concern. PRs should describe the pipeline surface touched, note required credentials or environment variables, include screenshots for dashboard UI changes, and mention the relevant validation command, usually `dbt build`, `make build-prod`, or `make refresh`.
+Follow the scoped history style: `feat(dbt): ...`, `fix(ingestion): ...`, `test(app+ci): ...`, or `docs: ...`. Keep commits focused. PRs should identify affected layers, configuration needs, validation commands, and screenshots for UI changes. Call out demo/private isolation impacts.
 
 ## Security & Configuration Tips
 
-Do not commit secrets or service-account keys. Ingestion and dbt expect `GOOGLE_APPLICATION_CREDENTIALS`; FRED ingestion expects `FRED_API_KEY`. CI profiles live in `ci/`, while local dbt profile configuration should stay outside the repo.
+Never commit `.env`, service-account keys, brokerage data, or `data/private/`. BigQuery uses `GOOGLE_APPLICATION_CREDENTIALS`; FRED uses `FRED_API_KEY`. Keep local dbt profiles outside the repository. Public builds and snapshots use demo holdings; real holdings require `prod-private`.
