@@ -11,6 +11,7 @@ import streamlit as st
 
 import data
 import ui
+from trends import filter_trend_window
 
 st.set_page_config(page_title="Anchor", page_icon="⚓", layout="wide")
 
@@ -96,12 +97,14 @@ def trend_for(ticker: str, hkey: str) -> pd.DataFrame:
     return% beside it."""
     cal = data.as_of_calendar()
     t = data.ticker_trend()
-    df = t[t["ticker"] == ticker].copy()
+    df = t[t["ticker"] == ticker]
     if df.empty:
         return df
-    df["trading_date"] = pd.to_datetime(df["trading_date"])
-    start = pd.to_datetime(cal[f"date_{hkey}"])
-    return df[df["trading_date"] >= start].sort_values("trading_date")
+    return filter_trend_window(
+        df,
+        cal[f"date_{hkey}"],
+        cal["as_of_date"],
+    )
 
 
 def macro_trend_for(indicator_key: str) -> pd.DataFrame:
@@ -189,7 +192,7 @@ def render_macro():
                 if not series.empty:
                     st.altair_chart(
                         ui.macro_spark(series, row["direction"]),
-                        use_container_width=True,
+                        width="stretch",
                     )
 
 
@@ -209,7 +212,7 @@ def render_sectors(hkey: str, regime: pd.Series):
         with c2:
             tr = trend_for(row["etf_ticker"], hkey)
             if not tr.empty:
-                st.altair_chart(ui.price_spark(tr), use_container_width=True)
+                st.altair_chart(ui.price_spark(tr), width="stretch")
         with c3:
             st.markdown(ui.colored(ui.pct(row[ret_col]), ui.ret_color(row[ret_col])), unsafe_allow_html=True)
         with c4:
@@ -253,7 +256,6 @@ def render_holdings(hkey: str):
     comp = data.portfolio_composition()
     hb = data.holdings_benchmarks()
     rel_col, lab_col = f"relative_{hkey}_pp", f"label_{hkey}"
-    hold_col, bench_col = f"holding_{hkey}_pct", f"benchmark_{hkey}_pct"
 
     st.subheader("Holdings")
     st.caption(
@@ -308,16 +310,16 @@ def render_holdings(hkey: str):
             )
             
             for _, h in grp.iterrows():
-                _render_holding_row(h, hb, hold_col, bench_col, rel_col, lab_col, hkey)
+                _render_holding_row(h, hb, rel_col, lab_col, hkey)
 
 
 def _render_allocation_donut(comp: pd.DataFrame):
     alloc = comp.groupby("asset_class", as_index=False)["weight_pct"].sum()
-    st.altair_chart(ui.allocation_donut(alloc), use_container_width=True)
+    st.altair_chart(ui.allocation_donut(alloc), width="stretch")
 
 
 
-def _render_table_header(horizon_label: str = "Trend"):
+def _render_table_header(horizon_label: str):
     """Renders the grid table column headers."""
     col1, col2, col3, col4, col5 = st.columns([2.5, 1.8, 1.2, 3.0, 1.5])
     with col1:
@@ -325,7 +327,7 @@ def _render_table_header(horizon_label: str = "Trend"):
     with col2:
         st.markdown("<span style='font-size: 0.8rem; font-weight: 700; color: rgba(148, 163, 184, 0.7); text-transform: uppercase; letter-spacing: 0.05em;'>Market Value</span>", unsafe_allow_html=True)
     with col3:
-        st.markdown("<span style='font-size: 0.8rem; font-weight: 700; color: rgba(148, 163, 184, 0.7); text-transform: uppercase; letter-spacing: 0.05em;'>Return</span>", unsafe_allow_html=True)
+        st.markdown(f"<span style='font-size: 0.8rem; font-weight: 700; color: rgba(148, 163, 184, 0.7); text-transform: uppercase; letter-spacing: 0.05em;'>Return ({horizon_label})</span>", unsafe_allow_html=True)
     with col4:
         st.markdown("<span style='font-size: 0.8rem; font-weight: 700; color: rgba(148, 163, 184, 0.7); text-transform: uppercase; letter-spacing: 0.05em;'>Active Benchmark Diff</span>", unsafe_allow_html=True)
     with col5:
@@ -333,34 +335,10 @@ def _render_table_header(horizon_label: str = "Trend"):
     st.markdown("<hr style='margin: 4px 0 10px; border: none; border-top: 2px solid rgba(148, 163, 184, 0.2);'>", unsafe_allow_html=True)
 
 
-def _render_holding_row(h, hb, hold_col, bench_col, rel_col, lab_col, hkey):
+def _render_holding_row(h, hb, rel_col, lab_col, hkey):
     """Renders a holding (or cash) as a compact, responsive table row."""
-    if h["asset_class"] == "cash":
-        col1, col2, col3, col4, col5 = st.columns([2.5, 1.8, 1.2, 3.0, 1.5])
-        with col1:
-            st.markdown(
-                f"**CASH**<br>"
-                f"<span style='color:{ui.SLATE};font-size:0.78rem'>{h['description']}</span>",
-                unsafe_allow_html=True,
-            )
-        with col2:
-            st.markdown(
-                f"**{ui.money(h['market_value'])}**<br>"
-                f"<span style='color:{ui.SLATE};font-size:0.78rem'>{h['weight_pct']:.1f}% weight</span>",
-                unsafe_allow_html=True,
-            )
-        with col3:
-            st.markdown("<div style='margin-top: 8px;'>—</div>", unsafe_allow_html=True)
-        with col4:
-            st.markdown(
-                f"<div style='margin-top: 8px; color:{ui.SLATE}; font-size:0.8rem;'>Not benchmarked</div>",
-                unsafe_allow_html=True,
-            )
-        with col5:
-            st.write("") # Empty trend cell
-        st.markdown("<hr style='margin: 8px 0; border: none; border-top: 1px solid rgba(148, 163, 184, 0.12);'>", unsafe_allow_html=True)
-        return
-
+    # Cash rides the general path on purpose: empty benches -> "Not benchmarked",
+    # no price series -> empty trend, and it earns the source-valued chip.
     # Sort benchmarks stably at the beginning so both columns can use it
     benches = hb[hb["holding_ticker"] == h["ticker"]].copy()
     axis_order = {axis: i for i, axis in enumerate(AXIS_LABELS)}
@@ -372,7 +350,10 @@ def _render_holding_row(h, hb, hold_col, bench_col, rel_col, lab_col, hkey):
         chips = []
         if not benches.empty and benches.iloc[0]["quote_type"] == "EQUITY":
             head = benches.iloc[0]
-            chips = [ui.chip(head["sector"]), ui.chip(f"{head['cap_tier']}-cap")]
+            if pd.notna(head["sector"]):
+                chips.append(ui.chip(head["sector"]))
+            if pd.notna(head["cap_tier"]):
+                chips.append(ui.chip(f"{head['cap_tier']}-cap"))
         elif h["asset_class"] == "fixed_income" and pd.notna(h["sub_style"]):
             chips = [ui.chip(f"{h['sub_style']} duration")]
         if h["is_root"]:
@@ -394,12 +375,15 @@ def _render_holding_row(h, hb, hold_col, bench_col, rel_col, lab_col, hkey):
             unsafe_allow_html=True,
         )
     with col3:
-        gain = (
-            ui.colored(ui.pct(h["unrealized_gain_pct"]), ui.ret_color(h["unrealized_gain_pct"]))
-            if pd.notna(h["unrealized_gain_pct"])
+        # .get: a live mart built before the return_* columns must degrade
+        # to "—", not crash the tier
+        holding_return = h.get(f"return_{hkey}_pct")
+        rendered_return = (
+            ui.colored(ui.pct(holding_return), ui.ret_color(holding_return))
+            if pd.notna(holding_return)
             else "—"
         )
-        st.markdown(f"<div style='margin-top: 8px;'>{gain}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='margin-top: 8px;'>{rendered_return}</div>", unsafe_allow_html=True)
     with col4:
         bench_htmls = []
         for _, b in benches.iterrows():
@@ -427,10 +411,10 @@ def _render_holding_row(h, hb, hold_col, bench_col, rel_col, lab_col, hkey):
                 bench_ticker = benches.iloc[0]["benchmark_etf"]
                 bench_tr = trend_for(bench_ticker, hkey)
                 if not bench_tr.empty:
-                    st.altair_chart(ui.dual_price_spark(tr, bench_tr, height=45), use_container_width=True)
+                    st.altair_chart(ui.dual_price_spark(tr, bench_tr, height=45), width="stretch")
                     has_dual = True
             if not has_dual:
-                st.altair_chart(ui.price_spark(tr, height=45), use_container_width=True)
+                st.altair_chart(ui.price_spark(tr, height=45), width="stretch")
 
 
     st.markdown("<hr style='margin: 8px 0; border: none; border-top: 1px solid rgba(148, 163, 184, 0.12);'>", unsafe_allow_html=True)
@@ -553,4 +537,3 @@ st.divider()
 render_sectors(hkey, data.macro_regime())
 st.divider()
 render_holdings(hkey)
-

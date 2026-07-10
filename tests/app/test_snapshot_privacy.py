@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from app import export_snapshot
 from ingestion.holdings_csv import parse_fidelity_positions
 
 REPO_ROOT = Path(__file__).parent.parent.parent
@@ -23,6 +24,7 @@ BENCHMARK_ETFS_CSV = REPO_ROOT / "transformation" / "seeds" / "benchmark_etfs.cs
 
 # Every column, across every served mart, that can carry a ticker symbol.
 TICKER_COLUMNS = ("ticker", "holding_ticker", "benchmark_etf", "etf_ticker")
+COMPOSITION_RETURN_COLUMNS = {"return_1m_pct", "return_ytd_pct", "return_1y_pct"}
 
 
 def _allowed_tickers() -> set[str]:
@@ -59,3 +61,26 @@ def test_snapshot_contains_only_demo_and_benchmark_tickers():
         "committed snapshot contains a non-demo ticker — privacy invariant "
         f"violated: {offenders}"
     )
+
+
+def test_snapshot_files_exactly_match_exported_tables():
+    actual = {path.stem for path in SNAPSHOT_DIR.glob("*.parquet")}
+    assert actual == set(export_snapshot.TABLES)
+
+
+def test_portfolio_composition_snapshot_contains_horizon_returns():
+    composition = pd.read_parquet(SNAPSHOT_DIR / "portfolio_composition.parquet")
+    assert COMPOSITION_RETURN_COLUMNS <= set(composition.columns)
+
+    # Column presence alone would pass even if the returns join silently broke
+    # and shipped an all-NaN snapshot. Source-valued rows (cash/alts) have no
+    # price series, so NaN is correct there — the population check belongs on
+    # market-valued rows only.
+    market_valued = composition[composition["valuation_source"] == "market"]
+    assert not market_valued.empty
+
+    # Keep 1m strict, but allow longer horizons to be sparse for future
+    # market-valued holdings with shorter price histories.
+    populated_returns = market_valued[sorted(COMPOSITION_RETURN_COLUMNS)].notna()
+    assert populated_returns["return_1m_pct"].all()
+    assert populated_returns[["return_ytd_pct", "return_1y_pct"]].any().all()
