@@ -99,6 +99,11 @@ def macro_regime() -> pd.Series:
     return _read("macro_regime").iloc[0]
 
 
+def as_of_calendar() -> pd.Series:
+    """The singleton shared trading-calendar row, as a Series for easy field access."""
+    return _read("as_of_calendar").iloc[0]
+
+
 def macro_trend() -> pd.DataFrame:
     return _read("macro_trend")
 
