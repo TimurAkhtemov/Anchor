@@ -114,7 +114,10 @@ _The dbt project lives in `transformation/`; the paths below are relative to it.
 **Serve-layer table (not dbt):** `copilot_briefing` — the LLM daily briefing artifact,
 written into the active marts dataset by `app/generate_briefing.py` (local Ollama; real
 portfolio structurally requires a local provider). One row, grain `horizon='all'`;
-`sources` JSON persists the headlines fed to the prompt as the audit trail. Not in dbt
+`sources` JSON persists the headlines fed to the prompt as the audit trail;
+`briefing_json` carries the structured tour script (per-step targets/figures,
+hard-validated — see `docs/immersive_briefing_design.md`) and `briefing_md` is
+assembled from its narrations. Not in dbt
 lineage (documented limitation); the only served table whose absence the app tolerates
 (sidebar falls back to the deterministic v0 lines). Design:
 `docs/llm_copilot_briefing_design.md`.

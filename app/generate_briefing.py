@@ -48,8 +48,8 @@ def main() -> None:
         print(f"  WARNING (numeric audit): {warning}")
     print(
         f"  wrote {summary['table']} — as_of {summary['as_of_date']}, "
-        f"{summary['chars']} chars, {summary['headlines']} headlines, "
-        f"model {summary['model']}"
+        f"{summary['steps']} tour steps, {summary['chars']} chars, "
+        f"{summary['headlines']} headlines, model {summary['model']}"
     )
 
 

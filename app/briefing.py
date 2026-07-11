@@ -72,7 +72,52 @@ ARTIFACT_COLUMNS = [
     "provider",
     "model",
     "sources",
+    "briefing_json",
 ]
+
+# --- tour script (docs/immersive_briefing_design.md) ---------------------------
+# The briefing is generated as an ordered tour: each step targets one entity and
+# carries its own narration + cited figures. Step-scoping is itself a grounding
+# device — a step about one holding cannot blend horizons across the portfolio.
+
+TOUR_KIND_ORDER = {"regime": 0, "indicator": 1, "sector": 2, "allocation": 3, "holding": 4}
+
+# Ollama structured-output schema (grammar-enforced at generation time). Our own
+# validate_steps() re-checks everything the grammar can't know (entity existence,
+# figure grounding, ordering).
+TOUR_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "steps": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer"},
+                    "target": {
+                        "type": "object",
+                        "properties": {
+                            "kind": {
+                                "type": "string",
+                                "enum": list(TOUR_KIND_ORDER),
+                            },
+                            "key": {"type": "string"},
+                        },
+                        "required": ["kind"],
+                    },
+                    "narration": {"type": "string"},
+                    "figures": {"type": "array", "items": {"type": "string"}},
+                    "headline_refs": {"type": "array", "items": {"type": "integer"}},
+                },
+                "required": ["id", "target", "narration", "figures", "headline_refs"],
+            },
+        }
+    },
+    "required": ["steps"],
+}
+
+MIN_TOUR_STEPS = 6
+MAX_TOUR_STEPS = 12
 
 
 class BriefingError(RuntimeError):
@@ -101,7 +146,9 @@ class BriefingProvider(Protocol):
     is_local: bool
     model: str
 
-    def generate(self, system: str, prompt: str) -> str: ...
+    def generate(
+        self, system: str, prompt: str, *, format_schema: dict | None = None
+    ) -> str: ...
 
 
 class OllamaProvider:
@@ -122,23 +169,25 @@ class OllamaProvider:
         self.timeout = timeout
         self.temperature = temperature
 
-    def generate(self, system: str, prompt: str) -> str:
+    def generate(
+        self, system: str, prompt: str, *, format_schema: dict | None = None
+    ) -> str:
         import requests  # lazy: not part of the app deploy's requirements
 
+        body = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ],
+            "stream": False,
+            "options": {"temperature": self.temperature},
+        }
+        if format_schema is not None:
+            # Ollama structured outputs: grammar-constrains decoding to the schema.
+            body["format"] = format_schema
         try:
-            resp = requests.post(
-                f"{self.host}/api/chat",
-                json={
-                    "model": self.model,
-                    "messages": [
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": prompt},
-                    ],
-                    "stream": False,
-                    "options": {"temperature": self.temperature},
-                },
-                timeout=self.timeout,
-            )
+            resp = requests.post(f"{self.host}/api/chat", json=body, timeout=self.timeout)
         except requests.exceptions.ConnectionError as exc:
             raise BriefingError(
                 f"Ollama not reachable at {self.host} — is `ollama serve` running?"
@@ -349,7 +398,9 @@ def build_context(marts: dict[str, pd.DataFrame], news: list[dict]) -> str:
                 # model quotes judgment instead of deriving it from signs — the
                 # live loop showed sign-derivation is its main failure mode.
                 label = b.get(f"label_{h}")
-                tag = f" ({label})" if isinstance(label, str) and label else ""
+                # Humanized ("in line", not "in_line") — the model echoes these
+                # verdicts verbatim into prose.
+                tag = f" ({label.replace('_', ' ')})" if isinstance(label, str) and label else ""
                 parts.append(f"{h.upper()} {v} pp{tag}")
             if parts:
                 lines.append(f"  vs {b['benchmark_etf']} ({b['benchmark_type']}): {', '.join(parts)}")
@@ -361,34 +412,36 @@ def build_context(marts: dict[str, pd.DataFrame], news: list[dict]) -> str:
     ]
     if not news:
         lines.append("(no recent headlines)")
-    for n in news:
-        lines.append(f"- [{n['ticker']}] \"{n['title']}\" — {n['provider']}, {n['pub_date']}")
+    for i, n in enumerate(news):
+        # Indexed so tour steps can reference items by number (headline_refs).
+        lines.append(f"- [{i}] [{n['ticker']}] \"{n['title']}\" — {n['provider']}, {n['pub_date']}")
         if n.get("summary"):
             lines.append(f"  {n['summary']}")
     return "\n".join(lines)
 
 
-SYSTEM_PROMPT = """You are Anchor's portfolio analyst, writing the owner's daily portfolio briefing.
+SYSTEM_PROMPT = """You are Anchor's portfolio analyst. Produce the owner's daily briefing as a guided tour script in JSON — an ordered sequence of steps the dashboard walks the reader through.
 
-Write about three short paragraphs of plain markdown — no headings, no bullet lists, no code fences. Use **bold** sparingly for tickers and key figures.
+Output a single JSON object {"steps": [...]} and nothing else. Each step:
+- "id": 1-based position.
+- "target": {"kind": ..., "key": ...} — what the step points at. Kinds, in the only order allowed: "regime" (no key), then "indicator" (key = the indicator name exactly as printed in DATA, e.g. "Inflation (YoY)"), then "sector" (key = the sector's ETF ticker, e.g. "XLK"), then "allocation" (no key), then "holding" (key = the holding's ticker).
+- "narration": one to three calm sentences about that target only. Plain text, no markdown.
+- "figures": every % or pp figure the narration cites, each copied character-for-character as it appears in both DATA and your narration.
+- "headline_refs": indexes (0-based, as numbered in NEWS) of any headlines the narration references; empty list if none.
 
-Follow the dashboard's reading order: the macro environment first, then sector context, then the portfolio's holdings. Weave the horizons (1M, YTD, 1Y) together like an analyst note rather than fixating on one.
+Tour structure: exactly one "regime" step first; one or two "indicator" steps for the most consequential indicators; one or two "sector" steps for the sectors most relevant to the portfolio; exactly one "allocation" step describing the portfolio's shape (index-tracking core positions may get their one combined mention here); then three to five "holding" steps for only the genuinely notable positions — the largest benchmark-relative moves and clear outliers, never a recitation of every holding. 6 to 12 steps total.
 
-The holdings paragraph is selective, not exhaustive: open with the portfolio's allocation shape, then discuss only the genuinely notable positions — the largest moves relative to their benchmarks and clear outliers. Index-tracking core positions deserve at most one sentence. Never recite every holding; the dashboard's table already does that.
-
-Where a NEWS item relates to a holding or sector you discuss, weave in one or two of them as context, naming the outlet given in that NEWS item. Use only items from the NEWS section, never attribute anything to an outlet that is not listed there, and never merge details from two items under one outlet — each detail belongs to the outlet of the item it came from.
+Where a NEWS item relates to a step's target, weave it into that step's narration, naming the outlet given in that NEWS item and listing the item's index in headline_refs. Use only items from the NEWS section, never attribute anything to an outlet that is not listed there, and never merge details from two items under one outlet.
 
 Grounding rules, non-negotiable:
 - Every numeric claim must be copied verbatim from the DATA section, formatted exactly as it appears there. Write percentage-point differences as "pp" exactly as DATA does — never spell out "percentage points".
 - Never compute, aggregate, total, extrapolate, average, or estimate numbers. If a figure is not printed in DATA, it does not exist.
-- When characterizing a holding against a benchmark, use the (ahead/behind/in line) verdicts printed beside each pp figure — never derive your own from the signs. A claim like "outperformed across horizons" or "beat both benchmarks" is only allowed when every verdict it covers says ahead; when verdicts differ, call the picture mixed.
+- When characterizing a holding against a benchmark, use the (ahead/behind/in line) verdicts printed beside each pp figure — never derive your own from the signs. A claim that a holding beat or lagged something is only allowed when every verdict it covers agrees; when verdicts differ, call the picture mixed.
 - When you describe a sector's rate relationship, quote its label exactly as given in DATA.
 - The NEWS section is qualitative context only — never take numbers from it.
 - If something is not in DATA, leave it out. Never invent.
 
-You describe and explain; you do not advise. Never predict prices, rank trade opportunities, or recommend buying, selling, or holding. Distinguish measured facts from your interpretation. Keep the language calm and restrained — no urgency, no hype.
-
-Output only the briefing markdown, nothing else."""
+You describe and explain; you do not advise. Never predict prices, rank trade opportunities, or recommend buying, selling, or holding. Distinguish measured facts from your interpretation. Keep the language calm and restrained — no urgency, no hype."""
 
 
 # --- validation -----------------------------------------------------------------
@@ -489,6 +542,111 @@ def validate_briefing(briefing_md: str, context: str) -> ValidationResult:
     return result
 
 
+def validate_steps(
+    steps: list[dict], marts: dict[str, pd.DataFrame], context: str, n_news: int
+) -> ValidationResult:
+    """Hard, per-step validation of the tour script — structure makes strictness
+    cheap where free prose forced warning-level checks. Verifies kind ordering
+    (the reading order is a contract, not a hope), target existence against the
+    marts, verbatim figure grounding against the DATA section, and headline
+    indexes against the fetched news."""
+    result = ValidationResult()
+    if not isinstance(steps, list) or not MIN_TOUR_STEPS <= len(steps) <= MAX_TOUR_STEPS:
+        result.errors.append(
+            f"tour must have {MIN_TOUR_STEPS}-{MAX_TOUR_STEPS} steps, got "
+            f"{len(steps) if isinstance(steps, list) else type(steps).__name__}"
+        )
+        return result
+
+    holdings = set(marts["portfolio_composition"]["ticker"].dropna())
+    sectors = set(marts["sector_performance"]["etf_ticker"].dropna())
+    indicators = {
+        _INDICATOR_LABELS.get(k, k)
+        for k in marts["macro_indicators"]["indicator_key"].dropna()
+    }
+    keyed_entities = {"indicator": indicators, "sector": sectors, "holding": holdings}
+    allowed_figures = set(_CITATION_RE.findall(context.split(NEWS_HEADER, 1)[0]))
+
+    last_rank = -1
+    for step in steps:
+        sid = step.get("id", "?")
+        kind = (step.get("target") or {}).get("kind")
+        key = (step.get("target") or {}).get("key")
+        narration = (step.get("narration") or "").strip()
+
+        if kind not in TOUR_KIND_ORDER:
+            result.errors.append(f"step {sid}: unknown target kind {kind!r}")
+            continue
+        rank = TOUR_KIND_ORDER[kind]
+        if rank < last_rank:
+            result.errors.append(
+                f"step {sid}: {kind} step out of reading order (macro -> sector -> holdings)"
+            )
+        last_rank = max(last_rank, rank)
+
+        if kind in keyed_entities:
+            if key not in keyed_entities[kind]:
+                result.errors.append(f"step {sid}: {kind} key {key!r} not in the packet")
+        if not narration:
+            result.errors.append(f"step {sid}: empty narration")
+        elif not (narration[0].isupper() or narration[0].isdigit()):
+            # Grammar-constrained decoding can leak junk prefixes ("narration la
+            # JPM has…", seen live); a legitimate sentence never starts lowercase.
+            result.errors.append(f"step {sid}: narration starts with junk: {narration[:30]!r}")
+        if "<think>" in narration.lower():
+            result.errors.append(f"step {sid}: narration contains <think> tags")
+
+        for figure in step.get("figures") or []:
+            if figure not in narration:
+                result.errors.append(
+                    f"step {sid}: figure {figure!r} not present in its narration"
+                )
+            cited = _CITATION_RE.findall(figure)
+            if not cited or not all(
+                _citation_is_grounded(c, allowed_figures) for c in cited
+            ):
+                result.errors.append(f"step {sid}: figure {figure!r} not grounded in DATA")
+        # Any % / pp cited in prose but omitted from figures[] still gets audited.
+        for cited in _CITATION_RE.findall(narration):
+            if not _citation_is_grounded(cited, allowed_figures):
+                result.errors.append(
+                    f"step {sid}: narration cites {cited!r} not found in DATA"
+                )
+
+        for ref in step.get("headline_refs") or []:
+            if not isinstance(ref, int) or not 0 <= ref < n_news:
+                result.errors.append(f"step {sid}: headline_ref {ref!r} out of range")
+
+    kinds = [s.get("target", {}).get("kind") for s in steps]
+    if kinds[:1] != ["regime"] or kinds.count("regime") != 1:
+        result.errors.append("tour must open with exactly one regime step")
+    if kinds.count("allocation") != 1:
+        result.errors.append("tour must contain exactly one allocation step")
+    if kinds.count("holding") < 1:
+        result.errors.append("tour must contain at least one holding step")
+    return result
+
+
+# briefing_md paragraph grouping: macro context / sector context / the portfolio —
+# preserves v1's three-paragraph shape for the Streamlit sidebar and text fallback.
+_PARAGRAPH_GROUPS = (("regime", "indicator"), ("sector",), ("allocation", "holding"))
+
+
+def assemble_briefing_md(steps: list[dict]) -> str:
+    """The text briefing is assembled from the tour narrations — one generated
+    source of truth, zero drift between the walkthrough and the fallback."""
+    paragraphs = []
+    for group in _PARAGRAPH_GROUPS:
+        bits = [
+            step["narration"].strip()
+            for step in steps
+            if step.get("target", {}).get("kind") in group and step.get("narration")
+        ]
+        if bits:
+            paragraphs.append(" ".join(bits))
+    return "\n\n".join(paragraphs)
+
+
 # --- artifact + write -------------------------------------------------------------
 
 
@@ -498,11 +656,13 @@ def build_artifact(
     as_of_date,
     provider: BriefingProvider,
     news: list[dict],
+    steps: list[dict] | None = None,
     horizon: str = "all",
     generated_at: datetime | None = None,
 ) -> pd.DataFrame:
     """One artifact row. `sources` persists the headlines that were in the
-    prompt — the audit trail for the qualitative claims."""
+    prompt — the audit trail for the qualitative claims; `briefing_json` is the
+    tour script the web surface renders."""
     sources = json.dumps(
         [
             {k: n[k] for k in ("ticker", "title", "provider", "pub_date")}
@@ -517,6 +677,7 @@ def build_artifact(
         "provider": provider.name,
         "model": provider.model,
         "sources": sources,
+        "briefing_json": json.dumps({"steps": steps}) if steps else None,
     }
     return pd.DataFrame([row], columns=ARTIFACT_COLUMNS)
 
@@ -534,6 +695,7 @@ def write_briefing(client, dataset: str, artifact: pd.DataFrame) -> str:
         bigquery.SchemaField("provider", "STRING", mode="REQUIRED"),
         bigquery.SchemaField("model", "STRING", mode="REQUIRED"),
         bigquery.SchemaField("sources", "STRING", mode="NULLABLE"),
+        bigquery.SchemaField("briefing_json", "STRING", mode="NULLABLE"),
     ]
     job_config = bigquery.LoadJobConfig(
         schema=schema,
@@ -571,19 +733,34 @@ def generate(
     marts = read_marts(client, dataset)
     news = [] if skip_news else fetch_news(held_tickers(marts["portfolio_composition"]))
     context = build_context(marts, news)
-    briefing_md = provider.generate(SYSTEM_PROMPT, context)
+    raw = provider.generate(SYSTEM_PROMPT, context, format_schema=TOUR_SCHEMA)
 
+    try:
+        steps = json.loads(raw)["steps"]
+    except (json.JSONDecodeError, KeyError, TypeError) as exc:
+        raise ValidationError(f"tour script is not valid JSON with 'steps': {exc}") from exc
+
+    step_result = validate_steps(steps, marts, context, n_news=len(news))
+    if not step_result.ok:
+        raise ValidationError("tour failed validation: " + "; ".join(step_result.errors))
+
+    # The text briefing is assembled from the narrations (one source of truth);
+    # the v1 whole-text checks stay as a belt over the assembled result.
+    briefing_md = assemble_briefing_md(steps)
     result = validate_briefing(briefing_md, context)
     if not result.ok:
         raise ValidationError("briefing failed validation: " + "; ".join(result.errors))
 
     as_of = marts["as_of_calendar"]["as_of_date"].iloc[0]
-    artifact = build_artifact(briefing_md, as_of_date=as_of, provider=provider, news=news)
+    artifact = build_artifact(
+        briefing_md, as_of_date=as_of, provider=provider, news=news, steps=steps
+    )
     table_id = write_briefing(client, dataset, artifact)
     return {
         "table": table_id,
         "as_of_date": str(pd.to_datetime(as_of).date()),
         "chars": len(briefing_md),
+        "steps": len(steps),
         "headlines": len(news),
         "model": provider.model,
         "warnings": result.warnings,
