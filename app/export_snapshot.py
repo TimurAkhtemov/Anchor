@@ -16,9 +16,12 @@ of the marts: ingest -> dbt build --target prod -> export_snapshot -> git push.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pandas as pd
-from google.cloud import bigquery
+
+if TYPE_CHECKING:
+    from google.cloud import bigquery
 
 PROJECT = "anchor-495115"
 MARTS_DATASET = "anchor_marts"
@@ -34,6 +37,9 @@ TABLES = [
     "portfolio_composition",
     "ticker_trend",
     "as_of_calendar",
+    # Serve-layer table written by app/generate_briefing.py, not dbt — the one
+    # table whose absence the app tolerates (data.copilot_briefing).
+    "copilot_briefing",
 ]
 
 
@@ -59,6 +65,8 @@ def export_snapshot(client: bigquery.Client) -> dict[str, int]:
 
 
 def main() -> None:
+    from google.cloud import bigquery
+
     client = bigquery.Client(project=PROJECT)
     counts = export_snapshot(client)
     for table, n in counts.items():

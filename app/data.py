@@ -81,6 +81,20 @@ def _read(table: str) -> pd.DataFrame:
     raise ValueError(f"unknown ANCHOR_SOURCE {SOURCE!r} (expected 'bigquery' or 'snapshot')")
 
 
+@st.cache_data(ttl=CACHE_TTL, show_spinner=False)
+def _read_optional(table: str) -> pd.DataFrame | None:
+    """Like _read, but absence is a value, not an error. st.cache_data does not
+    cache exceptions, so a bare try/except at the call site would re-probe a
+    missing table on every rerun; caching the None costs one probe per TTL.
+    Only genuine absence maps to None — auth/network failures stay loud."""
+    from google.api_core.exceptions import NotFound
+
+    try:
+        return _read(table)
+    except (FileNotFoundError, NotFound):
+        return None
+
+
 # --- tier readers (the UI's vocabulary) -------------------------------------
 # Stable left-to-right display order for the macro cards: policy -> market rate
 # -> inflation -> labor. The mart is unordered (4 rows); ordering is a serve
@@ -122,3 +136,15 @@ def ticker_trend() -> pd.DataFrame:
 
 def portfolio_composition() -> pd.DataFrame:
     return _read("portfolio_composition").sort_values("weight_pct", ascending=False)
+
+
+def copilot_briefing() -> pd.Series | None:
+    """The served LLM briefing row (horizon='all'), or None when no artifact
+    exists — the only served table whose absence is a legitimate state (the
+    generator hasn't run yet, or this world has never produced one). Written
+    by app/generate_briefing.py, not dbt."""
+    df = _read_optional("copilot_briefing")
+    if df is None or df.empty:
+        return None
+    rows = df[df["horizon"] == "all"]  # additive-safe for future per-horizon rows
+    return rows.iloc[0] if not rows.empty else None
