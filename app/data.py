@@ -12,6 +12,8 @@ DataFrames, never raw joins.
 from __future__ import annotations
 
 import os
+import json
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -25,6 +27,7 @@ PROJECT = "anchor-495115"
 PORTFOLIO = os.environ.get("ANCHOR_PORTFOLIO", "demo")
 MARTS_DATASET = "anchor_marts_private" if PORTFOLIO == "real" else "anchor_marts"
 SNAPSHOT_DIR = Path(__file__).parent / "snapshot"
+PUBLICATION_METADATA = SNAPSHOT_DIR / "publication.json"
 _KEY_PATH = os.environ.get(
     "GOOGLE_APPLICATION_CREDENTIALS",
     str(Path.home() / ".dbt" / "anchor-bigquery-key.json"),
@@ -122,3 +125,16 @@ def ticker_trend() -> pd.DataFrame:
 
 def portfolio_composition() -> pd.DataFrame:
     return _read("portfolio_composition").sort_values("weight_pct", ascending=False)
+
+
+def publication_metadata() -> dict:
+    if SOURCE != "snapshot" or not PUBLICATION_METADATA.exists():
+        return {}
+    return json.loads(PUBLICATION_METADATA.read_text())
+
+
+def freshness_status(today: date | None = None) -> dict:
+    """Calm settled-data status; four days accommodates weekends and holidays."""
+    settled = pd.to_datetime(as_of_calendar()["as_of_date"]).date()
+    age_days = ((today or datetime.now(timezone.utc).date()) - settled).days
+    return {"as_of_date": settled, "age_days": age_days, "is_stale": age_days > 4}

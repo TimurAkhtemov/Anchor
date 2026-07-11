@@ -471,6 +471,17 @@ def _render_rollup_grid(hb: pd.DataFrame, lab_col: str):
 st.title("⚓ Anchor")
 st.caption("Read top-down: macro environment → sectors → holdings.")
 
+freshness = data.freshness_status()
+publication = data.publication_metadata()
+published_at = publication.get("generated_at")
+status_text = f"Settled market data through {freshness['as_of_date']}"
+if published_at:
+    status_text += f" · snapshot published {pd.to_datetime(published_at).strftime('%Y-%m-%d %H:%M UTC')}"
+if freshness["is_stale"]:
+    st.warning(f"Data refresh delayed — {status_text}. The last complete snapshot remains available.")
+else:
+    st.caption(status_text)
+
 horizon = st.radio("Return horizon", list(HORIZONS), horizontal=True, index=0)
 hkey = HORIZONS[horizon]
 
@@ -553,4 +564,3 @@ st.divider()
 render_sectors(hkey, data.macro_regime())
 st.divider()
 render_holdings(hkey)
-

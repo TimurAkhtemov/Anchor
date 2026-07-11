@@ -54,25 +54,30 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install pytest deps
-        run: pip install -r ingestion/requirements.txt pandas pyarrow
+      - name: Install test and orchestration deps
+        run: pip install -r ingestion/requirements.txt -r orchestration/requirements.txt
+
+      - name: Install dbt packages
+        run: dbt deps --project-dir transformation
+
+      - name: Prepare orchestration manifest
+        env:
+          ANCHOR_MANIFEST_PROFILES_DIR: orchestration/dbt_profiles_build
+        run: python orchestration/prepare_manifest.py
 
       - name: Run pytest
-        # Pure-Python tests (CSV parsing, SnapTrade helpers, the snapshot-privacy
-        # invariant against the committed parquet files) — no BigQuery, no secrets.
+        # Includes Definitions/package-boundary tests plus the committed-snapshot
+        # privacy invariant; none of these tests query BigQuery.
+        env:
+          PYTHONPATH: orchestration
+          DBT_PROFILES_DIR: orchestration/dbt_profiles_build
         run: python -m pytest tests/ -q
-
-      - name: Install dbt
-        run: pip install "dbt-bigquery~=1.11.0"
 
       - name: Write BigQuery key
         # via env (not inline) to avoid leaking/injecting the secret into the shell
         env:
           BQ_SA_KEY: ${{ secrets.BQ_SA_KEY }}
         run: printf '%s' "$BQ_SA_KEY" > /tmp/anchor-bq-key.json
-
-      - name: Install dbt packages
-        run: dbt deps --project-dir transformation
 
       - name: Build + test
         run: dbt build --project-dir transformation --target ci

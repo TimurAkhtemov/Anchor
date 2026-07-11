@@ -4,10 +4,17 @@ version = "0.1.0"
 description = "Dagster code location orchestrating the Anchor pipeline (FRED/yfinance -> dbt -> snapshot)."
 requires-python = ">=3.12"
 dependencies = [
-    "dagster",
-    "dagster-dbt",
-    "dagster-gcp",
-    "dagster-webserver",
+    "dagster==1.13.8",
+    "dagster-dbt==0.29.8",
+    "dagster-gcp==0.29.8",
+    "dagster-webserver==1.13.8",
+    "dbt-bigquery~=1.11.0",
+    "db-dtypes",
+    "pandas>=2.2",
+    "pyarrow>=17",
+    "python-dotenv>=1.0",
+    "requests>=2.32",
+    "yfinance>=0.2",
 ]
 
 [build-system]

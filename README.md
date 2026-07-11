@@ -271,9 +271,11 @@ Captured design, still deferred:
   graph is *continuous* bronze → silver → gold → serve — the cross-boundary lineage
   plain dbt docs can't show. Chosen over a GitHub Actions cron for the asset-native
   lineage and as a stronger AE signal; pipeline steps live in a tool-agnostic `Makefile`
-  so the orchestrator is a swap, not a rewrite. Run locally with `make dagster`. Remaining:
-  **Dagster+ Serverless** for the unattended scheduled run (same code), data quality
-  (Elementary), optional SQLFluff lint.
+  so the orchestrator is a swap, not a rewrite. Run locally with `make dagster`.
+  Dagster+ Serverless deployment, build-time manifest packaging, public-only secrets,
+  post-close scheduling, snapshot validation, and atomic publication are implemented;
+  external activation remains an explicitly authorized operator step. Remaining: data
+  quality (Elementary) and optional SQLFluff lint.
 
 ---
 
