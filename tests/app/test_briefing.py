@@ -18,7 +18,8 @@ NAN = float("nan")
 
 
 class FakeProvider:
-    """Records the (system, prompt) it was called with and returns a canned briefing."""
+    """Records the (system, prompt, format_schema) it was called with and returns
+    a canned response."""
 
     name = "fake"
     model = "fake-model"
@@ -28,9 +29,10 @@ class FakeProvider:
         self.is_local = is_local
         self.system = None
         self.prompt = None
+        self.format_schema = None
 
-    def generate(self, system: str, prompt: str) -> str:
-        self.system, self.prompt = system, prompt
+    def generate(self, system: str, prompt: str, *, format_schema=None) -> str:
+        self.system, self.prompt, self.format_schema = system, prompt, format_schema
         return self.output
 
 
@@ -122,16 +124,28 @@ def _marts() -> dict[str, pd.DataFrame]:
     }
 
 
-# Cites only figures that exist verbatim in the _marts() packet.
-GOOD_BRIEFING = (
-    "The macro backdrop is calm but watchful: the Fed Funds Rate sits at **3.63%** "
-    "while inflation runs at 4.17% year over year, and the labor market holds steady.\n\n"
-    "Sector performance diverged over the month. Technology (XLK) gained +2.10% while "
-    "Energy (XLE) slipped to -2.89%; Energy remains a sector that moves with rates.\n\n"
-    "Equity is 40.0% of the portfolio. **AAPL** returned +12.34% YTD and sits ahead of "
-    "XLK by +0.85 pp on the month, carrying an unrealized gain of +40.12%. The bond "
-    "sleeve was quiet, with BND at +0.15% for the month."
-)
+# A valid tour whose every figure exists verbatim in the _marts() packet.
+GOOD_STEPS = [
+    {"id": 1, "target": {"kind": "regime"},
+     "narration": "The macro regime is steady rates with rising inflation and stable labor conditions across the quarter.",
+     "figures": [], "headline_refs": []},
+    {"id": 2, "target": {"kind": "indicator", "key": "Inflation (YoY)"},
+     "narration": "Inflation (YoY) now runs at 4.17%, up +1.73 pp over three months.",
+     "figures": ["4.17%", "+1.73 pp"], "headline_refs": []},
+    {"id": 3, "target": {"kind": "sector", "key": "XLK"},
+     "narration": "Technology gained +2.10% over the month and moves against rates, extending a +21.30% year.",
+     "figures": ["+2.10%", "+21.30%"], "headline_refs": []},
+    {"id": 4, "target": {"kind": "allocation"},
+     "narration": "Equity remains 40.0% of the portfolio, with fixed income at 35.0% and cash holding 25.0%.",
+     "figures": ["40.0%", "35.0%", "25.0%"], "headline_refs": []},
+    {"id": 5, "target": {"kind": "holding", "key": "AAPL"},
+     "narration": "AAPL returned +12.34% YTD and sits +0.85 pp ahead of XLK on the month, carrying unrealized gains of +40.12%.",
+     "figures": ["+12.34%", "+0.85 pp", "+40.12%"], "headline_refs": []},
+    {"id": 6, "target": {"kind": "holding", "key": "BND"},
+     "narration": "BND stayed quiet at +0.15% for the month and -0.23% YTD, in line with its benchmarks so far this year.",
+     "figures": ["+0.15%", "-0.23%"], "headline_refs": []},
+]
+GOOD_TOUR = json.dumps({"steps": GOOD_STEPS})
 
 
 # --- 1. build_context: the packet carries the exact mart numbers ---------------
@@ -215,13 +229,14 @@ def test_parse_news_items_caps_per_ticker_newest_first():
 
 
 def test_generate_end_to_end_writes_valid_artifact():
-    provider = FakeProvider(GOOD_BRIEFING)
+    provider = FakeProvider(GOOD_TOUR)
     client = FakeBQClient(_marts())
 
     summary = briefing.generate("demo", provider, client, skip_news=True)
 
     assert provider.system == briefing.SYSTEM_PROMPT
     assert briefing.DATA_HEADER in provider.prompt
+    assert provider.format_schema == briefing.TOUR_SCHEMA
 
     assert len(client.loads) == 1
     artifact, table_id, job_config = client.loads[0]
@@ -231,22 +246,112 @@ def test_generate_end_to_end_writes_valid_artifact():
     assert len(artifact) == 1
     row = artifact.iloc[0]
     assert row["horizon"] == "all"
-    assert row["briefing_md"] == GOOD_BRIEFING
+    assert row["briefing_md"] == briefing.assemble_briefing_md(GOOD_STEPS)
     assert row["as_of_date"] == date(2026, 7, 8)
     assert row["generated_at"].tzinfo is not None
     assert json.loads(row["sources"]) == []
+    assert json.loads(row["briefing_json"])["steps"] == GOOD_STEPS
 
     assert summary["as_of_date"] == "2026-07-08"
+    assert summary["steps"] == 6
     assert summary["headlines"] == 0
-    assert summary["warnings"] == []  # every GOOD_BRIEFING figure grounds
+    assert summary["warnings"] == []  # every GOOD_STEPS figure grounds
 
 
 def test_generate_does_not_write_when_validation_fails():
-    provider = FakeProvider("")  # empty output -> hard failure
+    provider = FakeProvider("not json at all")  # unparseable tour -> hard failure
     client = FakeBQClient(_marts())
     with pytest.raises(briefing.ValidationError):
         briefing.generate("demo", provider, client, skip_news=True)
     assert client.loads == []  # strict policy: nothing written on failure
+
+
+def test_generate_does_not_write_when_steps_invalid():
+    bad = [dict(s) for s in GOOD_STEPS]
+    bad[4] = {**bad[4], "narration": "TICKR surged 77.77% overnight.", "figures": ["77.77%"]}
+    provider = FakeProvider(json.dumps({"steps": bad}))
+    client = FakeBQClient(_marts())
+    with pytest.raises(briefing.ValidationError, match="77.77"):
+        briefing.generate("demo", provider, client, skip_news=True)
+    assert client.loads == []
+
+
+# --- 3b. tour-step validation + assembly -------------------------------------------
+
+
+def _steps_setup():
+    marts = _marts()
+    context = briefing.build_context(marts, news=[])
+    return marts, context
+
+
+def test_validate_steps_accepts_good_tour():
+    marts, context = _steps_setup()
+    result = briefing.validate_steps(GOOD_STEPS, marts, context, n_news=0)
+    assert result.ok, result.errors
+
+
+def test_validate_steps_rejects_unknown_target_key():
+    marts, context = _steps_setup()
+    bad = [dict(s) for s in GOOD_STEPS]
+    bad[4] = {**bad[4], "target": {"kind": "holding", "key": "TSLA"}}
+    result = briefing.validate_steps(bad, marts, context, n_news=0)
+    assert any("TSLA" in e for e in result.errors)
+
+
+def test_validate_steps_rejects_reading_order_violation():
+    marts, context = _steps_setup()
+    bad = [GOOD_STEPS[0], GOOD_STEPS[1], GOOD_STEPS[3], GOOD_STEPS[2],
+           GOOD_STEPS[4], GOOD_STEPS[5]]  # allocation before sector
+    result = briefing.validate_steps(bad, marts, context, n_news=0)
+    assert any("reading order" in e for e in result.errors)
+
+
+def test_validate_steps_rejects_figure_absent_from_narration():
+    marts, context = _steps_setup()
+    bad = [dict(s) for s in GOOD_STEPS]
+    bad[1] = {**bad[1], "figures": ["4.17%", "+0.22 pp"]}  # +0.22 pp never narrated
+    result = briefing.validate_steps(bad, marts, context, n_news=0)
+    assert any("not present in its narration" in e for e in result.errors)
+
+
+def test_validate_steps_rejects_junk_narration_prefix():
+    marts, context = _steps_setup()
+    bad = [dict(s) for s in GOOD_STEPS]
+    bad[5] = {**bad[5], "narration": "narration la " + bad[5]["narration"], "figures": []}
+    result = briefing.validate_steps(bad, marts, context, n_news=0)
+    assert any("junk" in e for e in result.errors)
+
+
+def test_validate_steps_rejects_bad_headline_ref():
+    marts, context = _steps_setup()
+    bad = [dict(s) for s in GOOD_STEPS]
+    bad[5] = {**bad[5], "headline_refs": [3]}
+    result = briefing.validate_steps(bad, marts, context, n_news=2)
+    assert any("headline_ref" in e for e in result.errors)
+
+
+def test_validate_steps_requires_regime_first_and_one_allocation():
+    marts, context = _steps_setup()
+    no_regime = GOOD_STEPS[1:] + [GOOD_STEPS[5]]  # keep count >= 6
+    result = briefing.validate_steps(no_regime, marts, context, n_news=0)
+    assert any("regime" in e for e in result.errors)
+
+
+def test_validate_steps_enforces_count_bounds():
+    marts, context = _steps_setup()
+    result = briefing.validate_steps(GOOD_STEPS[:3], marts, context, n_news=0)
+    assert not result.ok
+
+
+def test_assemble_briefing_md_groups_paragraphs_by_kind():
+    md = briefing.assemble_briefing_md(GOOD_STEPS)
+    paragraphs = md.split("\n\n")
+    assert len(paragraphs) == 3
+    assert "macro regime" in paragraphs[0] and "Inflation (YoY)" in paragraphs[0]
+    assert paragraphs[1].startswith("Technology")
+    assert paragraphs[2].startswith("Equity remains 40.0%")
+    assert "BND stayed quiet" in paragraphs[2]
 
 
 # --- 4. validator units -----------------------------------------------------------
