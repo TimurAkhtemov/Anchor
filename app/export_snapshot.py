@@ -37,6 +37,9 @@ TABLES = [
     "portfolio_composition",
     "ticker_trend",
     "as_of_calendar",
+    # Serve-layer table written by app/generate_briefing.py, not dbt — the one
+    # table whose absence the app tolerates (data.copilot_briefing).
+    "copilot_briefing",
 ]
 
 
