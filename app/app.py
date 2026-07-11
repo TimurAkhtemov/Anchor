@@ -6,6 +6,8 @@ read in the context of the one above it, so the layout never lets you jump
 straight to a stock without its macro + sector frame.
 """
 
+import json
+
 import pandas as pd
 import streamlit as st
 
@@ -49,6 +51,21 @@ div[data-testid="stVerticalBlock"] > div[style*="border: 1px solid"]:hover {
     transform: translateY(-2px) !important;
     box-shadow: 0 10px 20px 0 rgba(0, 0, 0, 0.05) !important;
     border-color: rgba(99, 102, 241, 0.3) !important; /* Soft indigo accent */
+}
+
+/* Sidebar copilot briefing card — same visual values as the v0 inline-styled
+   card. A keyed container gets the st-key-* class; markdown rendered inside it
+   stays real markdown (it would not render inside a raw HTML block). */
+.st-key-copilot_briefing {
+    background: rgba(99, 102, 241, 0.08);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    padding: 16px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+}
+.st-key-copilot_briefing div[data-testid="stMarkdown"] p {
+    font-size: 0.85rem;
+    margin-bottom: 8px;
 }
 
 /* Dark mode overrides */
@@ -450,22 +467,10 @@ def _render_rollup_grid(hb: pd.DataFrame, lab_col: str):
 
 
 
-# --- page --------------------------------------------------------------------
-
-st.title("⚓ Anchor")
-st.caption("Read top-down: macro environment → sectors → holdings.")
-
-horizon = st.radio("Return horizon", list(HORIZONS), horizontal=True, index=0)
-hkey = HORIZONS[horizon]
-
-# --- sidebar copilot ---------------------------------------------------------
-# Deterministic v0 of the roadmap's AI portfolio analyst: every line below is
-# computed from the marts at the CURRENT horizon selection, never hardcoded.
-with st.sidebar:
-    st.title("⚓ Anchor Copilot")
-    st.caption("AI-powered portfolio analyst & market context guide.")
-    st.markdown("---")
-
+def render_briefing_fallback(hkey: str) -> None:
+    """Deterministic v0 briefing — the graceful-degradation path when no LLM
+    artifact is served. Every line is computed from the marts at the CURRENT
+    horizon selection (unlike the LLM briefing, which is horizon-agnostic)."""
     regime = data.macro_regime()
     comp = data.portfolio_composition()
     hb = data.holdings_benchmarks()
@@ -515,7 +520,7 @@ with st.sidebar:
 
     briefing.append(
         f"<p style='font-size:0.72rem; color:{ui.SLATE}; margin-bottom:0; margin-top:12px;'>"
-        f"Deterministic briefing (v0) — LLM analysis is on the roadmap.</p>"
+        f"Deterministic briefing (fallback) — LLM briefing unavailable for this refresh.</p>"
     )
 
     st.markdown(
@@ -526,6 +531,59 @@ with st.sidebar:
         "</div>",
         unsafe_allow_html=True,
     )
+
+
+def render_llm_briefing(row: pd.Series) -> None:
+    """The served LLM briefing: real markdown inside the styled card (keyed
+    container + CSS — markdown does not render inside a raw HTML block), with
+    a provenance caption and an explicit staleness marker when the briefing
+    lags the dashboard's market calendar."""
+    with st.container(key="copilot_briefing"):
+        st.markdown(
+            "<h4 style='margin-top:0; color:#818cf8; font-size:1.05rem;'>"
+            "💡 Daily Portfolio Briefing</h4>",
+            unsafe_allow_html=True,
+        )
+        st.markdown(row["briefing_md"])
+
+        sources = row.get("sources")
+        n_headlines = len(json.loads(sources)) if isinstance(sources, str) and sources else 0
+        brief_date = pd.to_datetime(row["as_of_date"]).date()
+        cal_date = pd.to_datetime(data.as_of_calendar()["as_of_date"]).date()
+        stale = (
+            f" · ⚠️ Stale — dashboard data is as of {ui.fmt_date(cal_date)}"
+            if brief_date < cal_date
+            else ""
+        )
+        st.markdown(
+            f"<p style='font-size:0.72rem; color:{ui.SLATE}; margin-bottom:0; margin-top:8px;'>"
+            f"Generated {ui.fmt_date(brief_date)} · {row['model']} · {row['provider']} · "
+            f"{n_headlines} headlines{stale}</p>",
+            unsafe_allow_html=True,
+        )
+
+
+# --- page --------------------------------------------------------------------
+
+st.title("⚓ Anchor")
+st.caption("Read top-down: macro environment → sectors → holdings.")
+
+horizon = st.radio("Return horizon", list(HORIZONS), horizontal=True, index=0)
+hkey = HORIZONS[horizon]
+
+# --- sidebar copilot ---------------------------------------------------------
+# The LLM briefing artifact when one is served (horizon-agnostic by design —
+# it weaves all three horizons), else the deterministic v0 fallback.
+with st.sidebar:
+    st.title("⚓ Anchor Copilot")
+    st.caption("AI-powered portfolio analyst & market context guide.")
+    st.markdown("---")
+
+    briefing_row = data.copilot_briefing()
+    if briefing_row is not None:
+        render_llm_briefing(briefing_row)
+    else:
+        render_briefing_fallback(hkey)
 
     # Interactive chat input box — not wired up yet.
     st.chat_input("Ask Copilot about your portfolio...", disabled=True)
