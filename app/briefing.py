@@ -34,7 +34,10 @@ import pandas as pd
 
 PROJECT = "anchor-495115"
 BRIEFING_TABLE = "copilot_briefing"
-DEFAULT_MODEL = "qwen3:30b-a3b-instruct-2507-q4_K_M"
+# gemma4:31b (dense) won the post-ship A/B against qwen3:30b-a3b (MoE) on the
+# metric that matters here — verdict/attribution discipline — at ~10x latency,
+# which a pipeline-time artifact can afford. Swap via ANCHOR_BRIEFING_MODEL.
+DEFAULT_MODEL = "gemma4:31b"
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 
 # The numeric backbone: five served marts plus the shared trading calendar.
@@ -111,7 +114,7 @@ class OllamaProvider:
         self,
         model: str | None = None,
         host: str | None = None,
-        timeout: int = 300,
+        timeout: int = 600,
         temperature: float = 0.1,
     ):
         self.model = model or os.environ.get("ANCHOR_BRIEFING_MODEL", DEFAULT_MODEL)
@@ -316,7 +319,9 @@ def build_context(marts: dict[str, pd.DataFrame], news: list[dict]) -> str:
     lines += [
         "",
         "## Portfolio allocation",
-        " · ".join(f"{k}: {v:.1f}%" for k, v in alloc.items()),
+        # Human-readable class names — the model echoes raw keys like
+        # "fixed_income" into prose otherwise.
+        " · ".join(f"{k.replace('_', ' ')}: {v:.1f}%" for k, v in alloc.items()),
         "",
         f"## Holdings ({len(composition)} positions, by weight)",
     ]

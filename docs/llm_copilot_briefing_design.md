@@ -171,6 +171,16 @@ prompt, repeat — the iteration loop the local model exists for.
 - `OLLAMA_HOST` — optional, default `http://localhost:11434`
 - (future) `ANTHROPIC_API_KEY` — only read by the future `AnthropicProvider`
 
+## Post-ship revision (2026-07-11)
+
+Decision 4's default model flipped to **`gemma4:31b`** after a same-packet A/B:
+qwen3:30b-a3b (MoE, ~24s) kept producing scope/direction prose slips that the
+numeric audit structurally cannot catch (grounded numbers, wrong "across all
+horizons"/axis words), while gemma4:31b (dense, ~4 min) quoted the packet's
+ahead/behind/in-line verdicts and news attributions item-exactly with zero
+audit warnings. Latency is irrelevant at the pipeline call site (decision 2),
+so accuracy wins. qwen3 remains one `ANCHOR_BRIEFING_MODEL` away.
+
 ## Out of scope for v1 (documented follow-ups)
 
 - `AnthropicProvider` (official SDK, `is_local=False`) — the go-live/API path;
