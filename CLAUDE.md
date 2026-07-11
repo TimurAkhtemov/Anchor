@@ -51,16 +51,20 @@ dbt build --target prod-private --vars '{holdings_source: real}'   # real portfo
 # Serve layer (Streamlit dashboard, reads anchor_marts via the data seam)
 streamlit run app/app.py
 python app/export_snapshot.py    # refresh the committed snapshot the live demo reads
+python app/generate_briefing.py --portfolio demo   # LLM briefing -> copilot_briefing (needs Ollama running)
 
 # Pipeline steps (tool-agnostic; the Makefile is what Dagster wraps as assets)
-make ingest | make ingest-holdings-demo | make ingest-holdings-real | make build-prod | make build-private | make snapshot | make refresh
+make ingest | make ingest-holdings-demo | make ingest-holdings-real | make build-prod | make build-private | make briefing | make briefing-real | make snapshot | make refresh
 ```
 
 Note: `make snapshot`/`make refresh` may need
 `GOOGLE_APPLICATION_CREDENTIALS=~/.dbt/anchor-bigquery-key.json` for `app/export_snapshot.py`
 unless Application Default Credentials are configured. `make refresh` only touches the
-demo world (ingest → build-prod → snapshot) — real-portfolio builds are always a manual
-`make build-private`, never part of the scheduled/public pipeline.
+demo world (ingest → build-prod → briefing → snapshot; the briefing step needs local
+Ollama, and its failure halts the chain before the snapshot exports — strict by design).
+Real-portfolio builds are always a manual `make build-private` (+ `make briefing-real`),
+never part of the scheduled/public pipeline. Optional `.env` config for the briefing:
+`ANCHOR_BRIEFING_MODEL` (default `qwen3:30b-a3b-instruct-2507-q4_K_M`), `OLLAMA_HOST`.
 
 Live: dashboard → anchor-dashboard.streamlit.app · dbt docs → timurakhtemov.github.io/Anchor
 
@@ -106,6 +110,14 @@ _The dbt project lives in `transformation/`; the paths below are relative to it.
 - `holdings_benchmarks` — holding % paired with each asset-class-routed benchmark % as one row (not two cuts the UI joins); up to 5 axes per holding
 - `ticker_trend` — sparkline series for every ticker, scoped to the active world's universe
 
+**Serve-layer table (not dbt):** `copilot_briefing` — the LLM daily briefing artifact,
+written into the active marts dataset by `app/generate_briefing.py` (local Ollama; real
+portfolio structurally requires a local provider). One row, grain `horizon='all'`;
+`sources` JSON persists the headlines fed to the prompt as the audit trail. Not in dbt
+lineage (documented limitation); the only served table whose absence the app tolerates
+(sidebar falls back to the deterministic v0 lines). Design:
+`docs/llm_copilot_briefing_design.md`.
+
 **Lineage / contracts.**
 - `models/marts/_exposures.yml` declares the Streamlit dashboard and parquet snapshot export as downstream consumers of all served marts, including `portfolio_composition`.
 - `holdings_benchmarks` and `portfolio_composition` both have enforced dbt contracts; if their output columns/types drift, dbt should fail before the app silently breaks.
@@ -136,4 +148,8 @@ Holding % and benchmark % must be computed together in gold so each pairing is a
 
 **Dynamic portfolio ingestion is built** — the static watchlist is retired. A `raw_holdings` bronze dataset (`holdings_demo`/`holdings_real`, `ticker, quantity, cost_basis_total, as_of, source, …`) feeds the gold layer via SnapTrade (live Fidelity link) or a Fidelity CSV export; see `docs/make_it_real_design.md` for the locked design and `handoff.md` for what shipped and the honest deviations from it.
 
-Next: brokers beyond Fidelity (SnapTrade's OAuth aggregator flow already generalizes — this is mostly a UI/connection-flow change, not a modeling one), a portfolio-over-time UI (holdings already bank history via `as_of`-keyed appends — the data exists, nothing reads it yet), and Dagster+ Serverless for the unattended scheduled run (the last open item on the ops side). Multi-user (`user_id` + row-level isolation) is a documented seam, deliberately unbuilt at N=1.
+Next follows the grounding-first sequence in the README: Dagster+ Serverless for the
+unattended post-close run, reliable settled EOD ingestion, portfolio history centered on
+allocation drift and contribution, a non-advisory contextual briefing, then intent and
+reflection tools. Brokers beyond Fidelity and multi-user (`user_id` + row-level
+isolation) are later platform expansion, not the next product milestone.

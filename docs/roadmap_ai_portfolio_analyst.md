@@ -1,101 +1,139 @@
-# Roadmap: AI Investment Analyst & Daily Briefing Agent
+# Roadmap: Grounded Portfolio Briefing
 
-## Background & Vision
-Once the portfolio is ingested, classified, and benchmarked (via our Gold marts), we want to provide users with an **AI Investment Analyst**. 
+_Status: deferred. This direction is subordinate to Anchor's product principles in the
+README: portfolio understanding, settled context, and reflection—not market monitoring,
+prediction, or trade execution._
 
-Instead of just showing static tables and charts, the dashboard will feature an AI-driven interface that explains *why* the portfolio is performing the way it is, grounding its analysis on:
-1.  **Gold Marts Data** (weights, returns, active benchmark outperformance/underperformance across multiple axes).
-2.  **Latest Market News** related to their held tickers.
-3.  **Macro Trends** (interest rates, inflation, etc.).
+## Background and vision
 
-The entry point for this feature is a **Daily Portfolio Briefing Agent** that generates a 3-paragraph executive summary when the user first logs in or opens the dashboard.
+Once a portfolio is ingested, classified, and benchmarked through the gold marts,
+Anchor can explain how its pieces behaved together. The briefing should reduce the work
+of interpreting the dashboard without increasing the urge to react to ordinary market
+movement.
 
----
+Its grounded inputs are:
 
-## Architecture Flow
+1. **Gold marts** — allocation, settled returns, and active benchmark differences.
+2. **Macro context** — rates, inflation, labor, and their measured direction.
+3. **Curated material events** — optional, sourced context relevant to existing
+   positions; never an infinite or engagement-driven news feed.
+4. **Portfolio intent** — future theses, target allocations, review dates, and stated
+   invalidation criteria supplied by the user.
+
+The first release is a short post-close or weekly portfolio briefing. “Daily” describes
+the maximum generation cadence, not a reason to prompt the user to check the app daily.
+
+## Product constraints
+
+- Use completed daily data and display the shared as-of date.
+- Describe what changed, how it relates to the portfolio, and what remains uncertain.
+- Never predict prices, rank trade opportunities, or recommend buying or selling.
+- Do not use ordinary price movement as an alert trigger.
+- Distinguish measured facts from model-generated interpretation.
+- Cite any external event used in the explanation.
+- Cache each briefing so page refreshes cannot produce shifting narratives from the
+  same underlying data.
+- Prefer restrained language: no urgency, fear, hype, or engagement hooks.
+
+## Architecture flow
 
 ```mermaid
 sequenceDiagram
     participant User
-    participant App (Streamlit/React)
-    participant DB (BigQuery/Cache)
-    participant Ingest (Python API)
-    participant LLM (Gemini 1.5 Pro)
+    participant App
+    participant DB as BigQuery / Cache
+    participant Context as Curated Context
+    participant LLM
 
-    User->>App: 1. Opens dashboard
-    App->>DB: 2. Query today's briefing
-    alt Briefing exists in cache
-        DB-->>App: 3. Return cached Markdown briefing
-        App-->>User: 4. Display briefing instantly
+    User->>App: Open portfolio briefing
+    App->>DB: Read briefing for portfolio + settled as-of date
+    alt Briefing exists
+        DB-->>App: Return cached briefing and provenance
     else Briefing does not exist
-        App->>DB: 5. Extract portfolio summary (Gold Marts)
-        DB-->>App: 6. Return structured allocation & return data
-        App->>Ingest: 7. Request latest ticker news
-        Ingest->>App: 8. Return news summaries
-        App->>LLM: 9. Send portfolio context + news prompt
-        LLM-->>App: 10. Return markdown briefing
-        App->>DB: 11. Write briefing to database (Cache for today)
-        App-->>User: 12. Display briefing
+        App->>DB: Read gold marts and portfolio intent
+        App->>Context: Request optional sourced material events
+        App->>LLM: Generate under non-advisory grounding contract
+        LLM-->>App: Return structured briefing with uncertainties
+        App->>DB: Cache text, inputs, provenance, and generation metadata
     end
+    App-->>User: Display explanation with as-of date and sources
 ```
 
----
+## Core components
 
-## Core Components
+### 1. Briefing cache
 
-### 1. Database Cache Schema (`portfolio_briefings`)
-To avoid calling the LLM API on every page refresh, briefings are cached daily.
+The cache key must include the portfolio and settled data date. Persisting provenance
+makes a briefing reproducible and inspectable rather than ephemeral generated text.
 
 ```sql
-CREATE TABLE portfolio_briefings (
-    portfolio_id STRING NOT NULL,
-    generated_date DATE NOT NULL,
-    briefing_text STRING NOT NULL,
-    generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP(),
-    PRIMARY KEY (portfolio_id, generated_date)
+create table portfolio_briefings (
+    portfolio_id string not null,
+    as_of_date date not null,
+    briefing_text string not null,
+    input_fingerprint string not null,
+    source_metadata json,
+    generated_at timestamp default current_timestamp(),
+    primary key (portfolio_id, as_of_date)
 );
 ```
 
-### 2. Context Extraction (Data Seam)
-We write a python function to query the dbt-generated Gold tables and format them into a highly dense, token-efficient text block for the LLM. 
+### 2. Context extraction seam
 
-```python
-def get_portfolio_context(portfolio_id: str) -> str:
-    # Query gold.portfolio_composition and gold.holdings_benchmarks
-    # Formats a clean text representation:
-    context = """
-    Portfolio Allocation: 60% Equity (Large Blend, Technology), 35% Fixed Income (Intermediate), 5% Commodities.
-    Total Return YTD: +10.2%
-    Benchmark Performance:
-    - Equity holdings (VOO) matched SPY (+10.2% YTD)
-    - Fixed Income holdings (BND) returned -1.2% YTD (vs AGG: -1.1%, vs IEF: -0.8% [duration axis])
-    - Commodity holdings (GLDM) returned +8.5% YTD (No active benchmark)
-    """
-    return context
-```
+A deterministic function should serialize only modeled facts the briefing needs:
 
-### 3. News Ingestion Hook
-We write a python helper using `yfinance` or a financial news feed (like AlphaVantage) to scrape recent headlines/summaries for the active tickers.
+- allocation and concentration;
+- selected settled return horizon;
+- holding-versus-benchmark differences on each valid axis;
+- macro regime and measured changes;
+- material portfolio drift;
+- user-authored intent, when available;
+- explicit missing data and unbenchmarked positions.
 
-```python
-def fetch_ticker_news(tickers: list[str]) -> str:
-    # Query RSS/News API for each ticker in the portfolio
-    # Formats into: "Ticker: [Headline] - [Summary]"
-    return news_text
-```
+The same payload should be stored or fingerprinted with the generated briefing so the
+output can be traced back to its inputs.
 
-### 4. Agent Prompts
-We use **Gemini 1.5 Pro** due to its massive context window (to absorb news) and strong quantitative reasoning skills.
+### 3. Optional event context
 
-**System Prompt:**
-> You are Anchor's AI Investment Analyst. Your role is to write a daily executive portfolio briefing for the user.
-> Explain their YTD return and highlight which holdings beat or lagged their respective benchmarks.
-> Cross-reference their performance with recent news (e.g., if bond yields spiked, note how that impacted their intermediate-duration fixed income assets).
-> Keep the tone objective, analytical, and professional. Use markdown formatting. Limit the output to 3 short paragraphs.
+External context is a supplement, not the product's center. Include only events that are
+material to an existing holding or portfolio assumption, retain source links and event
+timestamps, and cap the number of items. If trustworthy context is unavailable, the
+briefing should remain useful using gold marts alone.
 
----
+### 4. Model contract
 
-## Future Enhancements
-*   **Conversational Q&A**: Let the user ask follow-up questions, e.g., *"Why did my technology sector underperform XLK this month?"* or *"Summarize the risk in my commodities position."*
-*   **Custom Position Groups**: Let the user select specific checkboxes in the UI (e.g., selecting all bond funds) and click "Analyze selection" to trigger a targeted LLM analysis of just those assets.
-*   **Alerts**: Proactive AI notifications, e.g., *"We noticed news indicating a management change in one of your held funds. Here is the summary."*
+Choose the model and provider at implementation time behind a small interface; the
+product contract matters more than a provider-specific integration. Require structured
+output with sections such as:
+
+- **Portfolio structure:** allocation, concentration, and drift.
+- **What changed:** settled performance in benchmark and macro context.
+- **What to review:** questions tied to the user's stated intent, not trade instructions.
+- **Uncertainty and missing context:** limitations that constrain the explanation.
+
+The system instruction must explicitly prohibit predictions, target prices, security
+rankings, and buy/sell/hold recommendations.
+
+## Evaluation and guardrails
+
+Before release, test the briefing against fixed mart fixtures and require that it:
+
+- reproduces all cited numbers exactly;
+- never invents a benchmark for an unbenchmarked asset;
+- preserves the selected horizon and common as-of date;
+- separates sourced events from inferred interpretation;
+- remains useful with no external news;
+- refuses requests for personalized trade instructions while still explaining the
+  portfolio context;
+- produces materially stable output for identical cached inputs.
+
+## Later enhancements
+
+- **Explanatory Q&A:** questions such as “why did this holding lag its benchmark?” with
+  the same settled-data and non-advisory contract.
+- **Position-group reflection:** analyze a user-selected asset class or thesis as a
+  coherent group.
+- **Intent review:** surface positions whose allocation or evidence has moved outside a
+  user-defined range and ask whether the original thesis still applies.
+- **Scheduled check-ins:** reminders for a review date or stale thesis—not notifications
+  for routine price movement.
