@@ -1,26 +1,47 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* Morning-paper identity — light-only by design (the paper IS the identity).
+   Palette validated with the dataviz validator against #F9F5EC: ahead/behind
+   are the CVD-safe blue<->bronze diverging pair (ΔE 33.1), the in_line
+   midpoint is deliberately neutral gray, text roles clear WCAG. */
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-paper: #f9f5ec; /* page ground */
+  --color-paper-raised: #fdfbf5; /* cards, rail sheet */
+  --color-ink: #211d16; /* primary text, active marks (15.4:1) */
+  --color-ink-muted: #6e6353; /* secondary text (5.4:1) */
+  --color-ink-faint: #a79b87; /* dimmed/dateline text */
+  --color-rule: #e5dccb; /* hairlines */
+  --color-pencil: #2f5a9e; /* editor's blue pencil — step marks, spotlights (6.3:1) */
+  --color-pencil-wash: #e3e9f4; /* pencil at chip-background strength */
+  --color-ahead: #3e6fb0; /* diverging cool pole (4.7:1) */
+  --color-behind: #a16a2e; /* diverging warm pole (4.2:1) */
+  --color-steady: #948a7b; /* diverging neutral midpoint — in_line */
+  --color-bar: #7a6d57; /* sector bars, single-hue nominal series (4.7:1) */
+  --color-alloc-equity: #3a342a; /* ink-wash ordinal ramp: equity */
+  --color-alloc-fixed: #77694f; /* fixed income */
+  --color-alloc-cash: #b3a387; /* cash (2.3:1 — ordinal light end, direct-labeled) */
+
+  --font-display: var(--font-newsreader), Georgia, "Times New Roman", serif;
+  --font-body: var(--font-public-sans), system-ui, sans-serif;
+  --font-data: var(--font-geist-mono), ui-monospace, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+:root {
+  color-scheme: light;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+}
+
+::selection {
+  background: var(--color-pencil-wash);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-pencil);
+  outline-offset: 2px;
 }

@@ -14,6 +14,11 @@ export function indicatorKeyForLabel(label: string): string {
   return INDICATOR_LABEL_TO_KEY[label] ?? label;
 }
 
+export const INDICATOR_KEY_TO_LABEL: Record<string, string> =
+  Object.fromEntries(
+    Object.entries(INDICATOR_LABEL_TO_KEY).map(([label, key]) => [key, label]),
+  );
+
 export const HORIZON_LABEL: Record<Horizon, string> = {
   daily: "today",
   "1m": "past month",
@@ -65,4 +70,11 @@ export function fmtDate(iso: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
   if (!m) return iso;
   return `${MONTHS[Number(m[2]) - 1]} ${Number(m[3])}, ${m[1]}`;
+}
+
+// Monthly indicators are dated to the 1st; "May 2026" is the honest label.
+export function fmtMonth(iso: string): string {
+  const m = /^(\d{4})-(\d{2})/.exec(iso);
+  if (!m) return iso;
+  return `${MONTHS[Number(m[2]) - 1]} ${m[1]}`;
 }
