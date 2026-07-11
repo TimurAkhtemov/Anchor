@@ -112,7 +112,9 @@ def _marts() -> dict[str, pd.DataFrame]:
         "holdings_benchmarks": pd.DataFrame(
             [
                 {"holding_ticker": "AAPL", "benchmark_type": "sector", "benchmark_etf": "XLK",
-                 "relative_1m_pp": 0.85, "relative_ytd_pp": -10.82, "relative_1y_pp": 6.79},
+                 "relative_1m_pp": 0.85, "relative_ytd_pp": -10.82, "relative_1y_pp": 6.79,
+                 "label_1m": "ahead", "label_ytd": "behind", "label_1y": "ahead"},
+                # No label_* columns on this row: the packet must tolerate their absence.
                 {"holding_ticker": "AAPL", "benchmark_type": "cap_style", "benchmark_etf": "SPY",
                  "relative_1m_pp": 0.65, "relative_ytd_pp": 5.60, "relative_1y_pp": 28.44},
             ]
@@ -146,7 +148,10 @@ def test_build_context_contains_exact_mart_numbers():
     assert "moves with rates" in ctx  # comovement label verbatim
     assert "equity: 40.0%" in ctx  # allocation line
     assert "YTD +12.34%" in ctx
-    assert "vs XLK (sector): 1M +0.85 pp" in ctx
+    # The mart's own ahead/behind verdicts ride beside the pp figures...
+    assert "vs XLK (sector): 1M +0.85 pp (ahead), YTD -10.82 pp (behind)" in ctx
+    # ...and rows without label columns still render, just without tags.
+    assert "vs SPY (cap_style): 1M +0.65 pp," in ctx
     assert "unrealized +40.12%" in ctx
     # Reading order: DATA before NEWS.
     assert ctx.index(briefing.DATA_HEADER) < ctx.index(briefing.NEWS_HEADER)

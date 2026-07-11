@@ -112,7 +112,7 @@ class OllamaProvider:
         model: str | None = None,
         host: str | None = None,
         timeout: int = 300,
-        temperature: float = 0.2,
+        temperature: float = 0.1,
     ):
         self.model = model or os.environ.get("ANCHOR_BRIEFING_MODEL", DEFAULT_MODEL)
         self.host = (host or os.environ.get("OLLAMA_HOST", DEFAULT_OLLAMA_HOST)).rstrip("/")
@@ -335,13 +335,19 @@ def build_context(marts: dict[str, pd.DataFrame], news: list[dict]) -> str:
         lines.append(f"{head}: {tail}")
         axes = benchmarks[benchmarks["holding_ticker"] == r["ticker"]].sort_values("benchmark_type")
         for _, b in axes.iterrows():
-            rel = ", ".join(
-                f"{h.upper()} {v} pp"
-                for h in ("1m", "ytd", "1y")
-                if (v := _fmt(b[f"relative_{h}_pp"], "+.2f")) is not None
-            )
-            if rel:
-                lines.append(f"  vs {b['benchmark_etf']} ({b['benchmark_type']}): {rel}")
+            parts = []
+            for h in ("1m", "ytd", "1y"):
+                v = _fmt(b[f"relative_{h}_pp"], "+.2f")
+                if v is None:
+                    continue
+                # The mart's own ahead/behind/in line verdict rides along so the
+                # model quotes judgment instead of deriving it from signs — the
+                # live loop showed sign-derivation is its main failure mode.
+                label = b.get(f"label_{h}")
+                tag = f" ({label})" if isinstance(label, str) and label else ""
+                parts.append(f"{h.upper()} {v} pp{tag}")
+            if parts:
+                lines.append(f"  vs {b['benchmark_etf']} ({b['benchmark_type']}): {', '.join(parts)}")
 
     lines += [
         "",
@@ -365,12 +371,12 @@ Follow the dashboard's reading order: the macro environment first, then sector c
 
 The holdings paragraph is selective, not exhaustive: open with the portfolio's allocation shape, then discuss only the genuinely notable positions — the largest moves relative to their benchmarks and clear outliers. Index-tracking core positions deserve at most one sentence. Never recite every holding; the dashboard's table already does that.
 
-Where a NEWS item relates to a holding or sector you discuss, weave in one or two of them as context, naming the outlet given in that NEWS item. Use only items from the NEWS section and never attribute anything to an outlet that is not listed there.
+Where a NEWS item relates to a holding or sector you discuss, weave in one or two of them as context, naming the outlet given in that NEWS item. Use only items from the NEWS section, never attribute anything to an outlet that is not listed there, and never merge details from two items under one outlet — each detail belongs to the outlet of the item it came from.
 
 Grounding rules, non-negotiable:
 - Every numeric claim must be copied verbatim from the DATA section, formatted exactly as it appears there. Write percentage-point differences as "pp" exactly as DATA does — never spell out "percentage points".
 - Never compute, aggregate, total, extrapolate, average, or estimate numbers. If a figure is not printed in DATA, it does not exist.
-- Before writing "outperformed" or "underperformed", check the sign of the pp figure you are citing: positive pp means the holding is ahead of that benchmark, negative means behind.
+- When characterizing a holding against a benchmark, use the (ahead/behind/in line) verdicts printed beside each pp figure — never derive your own from the signs. A claim like "outperformed across horizons" or "beat both benchmarks" is only allowed when every verdict it covers says ahead; when verdicts differ, call the picture mixed.
 - When you describe a sector's rate relationship, quote its label exactly as given in DATA.
 - The NEWS section is qualitative context only — never take numbers from it.
 - If something is not in DATA, leave it out. Never invent.
