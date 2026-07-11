@@ -19,6 +19,9 @@ export function CodaScene() {
     const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(briefing.as_of_date);
     if (!m) return;
     const asOf = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    // The post-mount setState is the point: the static HTML must not carry a
+    // wall-clock value, or build-time output and first client render diverge.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setStaleDays(Math.floor((Date.now() - asOf) / 86_400_000));
   }, [briefing.as_of_date]);
 

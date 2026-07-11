@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { fmtPct, HORIZON_LABEL } from "@/lib/format";
+import { HORIZON_LABEL } from "@/lib/format";
 import type { PortfolioPosition } from "@/lib/types";
 import { SceneHeading, SceneShell } from "../SceneShell";
 import { HeadlineChip } from "../marks/Chip";
