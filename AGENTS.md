@@ -32,3 +32,7 @@ Follow the scoped history style: `feat(dbt): ...`, `fix(ingestion): ...`, `test(
 ## Security & Configuration Tips
 
 Never commit `.env`, service-account keys, brokerage data, or `data/private/`. BigQuery uses `GOOGLE_APPLICATION_CREDENTIALS`; FRED uses `FRED_API_KEY`. Keep local dbt profiles outside the repository. Public builds and snapshots use demo holdings; real holdings require `prod-private`.
+
+## Current Deployment Decision
+
+Anchor remains local-first for orchestration. Use `make dagster` for local runs; do not deploy or enable Dagster+ Serverless while the app has no public-user need that justifies its recurring cost. The completed Serverless implementation is preserved on `feat/dagster-serverless` at commit `90d5625` and is intentionally absent from `main`. Resume that branch only with renewed deployment authorization. Until then, do not add Dagster+ secrets, push its deployment workflow, enable cloud schedules, or publish snapshots through it.
