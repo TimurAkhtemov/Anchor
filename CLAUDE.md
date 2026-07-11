@@ -136,4 +136,8 @@ Holding % and benchmark % must be computed together in gold so each pairing is a
 
 **Dynamic portfolio ingestion is built** — the static watchlist is retired. A `raw_holdings` bronze dataset (`holdings_demo`/`holdings_real`, `ticker, quantity, cost_basis_total, as_of, source, …`) feeds the gold layer via SnapTrade (live Fidelity link) or a Fidelity CSV export; see `docs/make_it_real_design.md` for the locked design and `handoff.md` for what shipped and the honest deviations from it.
 
-Next: brokers beyond Fidelity (SnapTrade's OAuth aggregator flow already generalizes — this is mostly a UI/connection-flow change, not a modeling one), a portfolio-over-time UI (holdings already bank history via `as_of`-keyed appends — the data exists, nothing reads it yet), and Dagster+ Serverless for the unattended scheduled run (the last open item on the ops side). Multi-user (`user_id` + row-level isolation) is a documented seam, deliberately unbuilt at N=1.
+Next follows the grounding-first sequence in the README: Dagster+ Serverless for the
+unattended post-close run, reliable settled EOD ingestion, portfolio history centered on
+allocation drift and contribution, a non-advisory contextual briefing, then intent and
+reflection tools. Brokers beyond Fidelity and multi-user (`user_id` + row-level
+isolation) are later platform expansion, not the next product milestone.

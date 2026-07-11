@@ -192,6 +192,33 @@ streamlit run app/app.py     # reads anchor_marts via the data seam
 
 ---
 
+## Product principles
+
+Anchor is a **portfolio-understanding** product, not a market-monitoring or
+trade-execution product. Its job is to help people understand what they own, how the
+pieces fit together, and whether the portfolio still reflects their intent. The product
+should be fresh enough to trust, but slow enough to think.
+
+- **Settled context over live stimulation.** Daily completed closes are the operating
+  cadence. Intraday prices, flashing tickers, market movers, and 1D/1W performance views
+  are deliberately out of scope; 1M is the shortest primary return horizon.
+- **Zoom out before zooming in.** The reading order remains macro → sectors → holdings.
+  Allocation and appropriate benchmark context are more important than an isolated gain.
+- **Explain, do not provoke.** News and AI may clarify what happened, uncertainty, and
+  relevant context; they must not predict prices or issue buy/sell recommendations.
+- **Reflection over reaction.** Alerts belong to stale data, material portfolio drift, or
+  a scheduled review—not ordinary price movement. Future interaction should support
+  theses, target allocations, review dates, and explicit invalidation criteria.
+- **Calm, honest presentation.** Every number carries an as-of date, missing data remains
+  visibly missing, and restrained color avoids turning gains and losses into the page's
+  emotional center.
+
+Feature test: **does this help someone understand their portfolio, or help them react
+faster to market movement?** If the principal benefit is faster reaction, it does not
+belong in Anchor.
+
+---
+
 ## Limitations & honest caveats
 
 Surfacing these is the point — analytical maturity is knowing what your numbers *don't*
@@ -246,34 +273,36 @@ the static 6-stock watchlist this milestone. Full design + honest build deviatio
 `docs/holdings_ingestion.md` / `docs/multi_asset_benchmarking.md` are kept as design
 history — superseded by `make_it_real_design.md`.
 
-Captured design, still deferred:
+The next milestones deliberately deepen trust and reflection instead of increasing the
+speed or intensity of market feedback:
 
-- **`docs/ingestion_roadmap.md`** — a reliable EOD API for the nightly post-close
-  increment (yfinance stays the deep-backfill source); incremental loading beyond prices.
-  (dbt source-freshness is already a tested contract, shipped in the dbt-depth pass.)
-- **Portfolio-over-time UI.** Holdings already bank history via `as_of`-keyed appends
-  (a day-one design choice); no UI reads that history yet.
-- **Beyond this milestone's locked scope** (see "Out of scope" in
-  `docs/make_it_real_design.md`): other brokers via SnapTrade's existing OAuth
-  aggregator flow, a credit axis for bonds, a generalized bond context tier, multi-user
-  (`user_id` + row-level isolation — the evolution path is documented, not built).
-- **Ops** — **live:** the public dashboard (Streamlit Community Cloud reads the committed
-  snapshot via the `data.py` `SOURCE` switch; `app/export_snapshot.py` regenerates it),
-  **dbt docs/lineage** on GitHub Pages
-  ([timurakhtemov.github.io/Anchor](https://timurakhtemov.github.io/Anchor/),
-  `.github/workflows/docs.yml`), **CI** (`.github/workflows/ci.yml` — `dbt build` +
-  all 118 tests into an isolated `dbt_ci` dataset on every PR/push), and **orchestration
-  via Dagster** (`orchestration/` — `dagster-dbt`: a `holdings_demo` bronze asset +
-  FRED/yfinance ingestion + every dbt model + the snapshot export as **one
-  software-defined asset graph**, daily post-close schedule; real/SnapTrade pulls stay
-  manual and local, so the scheduled public graph never touches real data). A
-  `DagsterDbtTranslator` maps each dbt source onto the bronze ingestion assets, so the
-  graph is *continuous* bronze → silver → gold → serve — the cross-boundary lineage
-  plain dbt docs can't show. Chosen over a GitHub Actions cron for the asset-native
-  lineage and as a stronger AE signal; pipeline steps live in a tool-agnostic `Makefile`
-  so the orchestrator is a swap, not a rewrite. Run locally with `make dagster`. Remaining:
-  **Dagster+ Serverless** for the unattended scheduled run (same code), data quality
-  (Elementary), optional SQLFluff lint.
+1. **Unattended post-close operation.** Deploy the existing Dagster asset graph to
+   Dagster+ Serverless, package the dbt manifest at build time, wire secrets, enable the
+   weekday post-close schedule, and automate publication of the refreshed public
+   snapshot. The scheduled graph remains demo-only; real/SnapTrade pulls stay private.
+2. **Reliable settled EOD data.** Follow `docs/ingestion_roadmap.md`: move the newest
+   completed session off yfinance's critical path, preserve adjusted-price continuity,
+   and enforce freshness as a data contract. This improves trust without introducing
+   intraday monitoring.
+3. **Grounded portfolio history.** Holdings already bank `as_of`-keyed history. Build
+   marts and UI for allocation drift, concentration, asset-class contribution, and
+   changes in portfolio structure—not an animated brokerage-style P&L curve.
+4. **Contextual portfolio briefing.** Evolve the deterministic sidebar into a cached
+   post-close or weekly explanation grounded in gold marts, macro context, and carefully
+   sourced events. It explains; it does not predict or recommend trades. See
+   `docs/roadmap_ai_portfolio_analyst.md`.
+5. **Intent and reflection.** Add position theses, target allocations, review dates, and
+   prompts such as “what would invalidate this holding?” so the dashboard connects what
+   the user owns to why they own it.
+
+Later platform expansion remains intentionally separate: other brokers through
+SnapTrade's OAuth flow, a credit axis for bonds, a generalized bond context tier,
+multi-user identity plus row-level isolation, and optional data-quality/lint tooling
+(Elementary and SQLFluff).
+
+Already live: the public Streamlit snapshot, dbt docs/lineage on GitHub Pages, CI on
+every PR/push, and the complete local Dagster bronze → silver → gold → serve asset graph.
+Run the graph locally with `make dagster`.
 
 ---
 
