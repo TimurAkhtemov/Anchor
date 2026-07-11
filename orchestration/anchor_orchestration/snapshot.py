@@ -18,9 +18,13 @@ from app.export_snapshot import SNAPSHOT_DIR, TABLES, export_snapshot, promote_s
 from app.snapshot_validation import validate_snapshot
 from app.snapshot_publication import publish_snapshot
 
-# The snapshot reads exactly these six marts; keys carry the anchor_marts schema
-# prefix dagster-dbt assigns, so this asset hangs directly off the mart nodes.
-_MART_DEPS = [AssetKey(["anchor_marts", t]) for t in TABLES] + [AssetKey("source_freshness")]
+# copilot_briefing is a serve-layer table written outside dbt by the local-LLM
+# workflow. Export it with the other snapshot files, but do not invent a dbt
+# asset dependency for it. Its own as_of_date remains visible in the sidebar.
+_DBT_MART_TABLES = [table for table in TABLES if table != "copilot_briefing"]
+_MART_DEPS = [AssetKey(["anchor_marts", table]) for table in _DBT_MART_TABLES] + [
+    AssetKey("source_freshness")
+]
 
 
 @asset(

@@ -1,6 +1,6 @@
 # Anchor serve layer (Streamlit dashboard). Kept separate from
 # ingestion/requirements.txt — the app reads marts, it doesn't ingest.
-streamlit
+streamlit>=1.49  # charts use width="stretch" (replaced use_container_width)
 altair
 pandas
 # BigQuery read path (local dev / snapshot-export step). The public deploy

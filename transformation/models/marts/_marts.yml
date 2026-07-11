@@ -330,7 +330,9 @@ models:
   - name: portfolio_composition
     description: >
       Sizing mart: one row per held ticker including cash and root holdings —
-      live market value, portfolio weight, unrealized gain, asset class.
+      live market value, portfolio weight, unrealized gain, asset class, and
+      selected-horizon returns. Returns end at the shared market-calendar date;
+      as_of_date is the separate holdings-import date.
       Grain: one row per ticker.
     config:
       contract:
@@ -383,11 +385,20 @@ models:
       - name: unrealized_gain_pct
         data_type: float64
         description: market_value vs cost_basis, in percent; null for cash / missing basis.
+      - name: return_1m_pct
+        data_type: float64
+        description: Percent change over the shared ~1 month market-calendar window; null when price history is unavailable.
+      - name: return_ytd_pct
+        data_type: float64
+        description: Percent change from the shared prior-year market close; null when price history is unavailable.
+      - name: return_1y_pct
+        data_type: float64
+        description: Percent change over the shared ~1 year market-calendar window; null when price history is unavailable.
       - name: is_root
         data_type: boolean
         description: True when the holding IS its own benchmark (held SPY/AGG) — display with no comparison.
         data_tests: [not_null]
       - name: as_of_date
         data_type: date
-        description: Batch date of the underlying holdings import.
+        description: Batch date of the underlying holdings import; distinct from the shared market-calendar end date used for returns.
         data_tests: [not_null]
