@@ -70,8 +70,11 @@ demo world (ingest → build-prod → briefing → snapshot; the briefing step n
 Ollama, and its failure halts the chain before the snapshot exports — strict by design).
 Real-portfolio builds are always a manual `make build-private` (+ `make briefing-real`),
 never part of the scheduled/public pipeline. Optional `.env` config for the briefing:
+`ANCHOR_BRIEFING_PROVIDER` (`ollama` default; `anthropic` = cloud model, DEMO world only —
+a structural guard in `build_provider` hard-fails cloud + real before any network call),
 `ANCHOR_BRIEFING_MODEL` (default `gemma4:31b` — won the post-ship A/B on verdict/attribution
-discipline; ~4 min/generation is fine at pipeline time), `OLLAMA_HOST`.
+discipline; ~4 min/generation is fine at pipeline time), `OLLAMA_HOST`,
+`ANCHOR_BRIEFING_CLOUD_MODEL` (default `claude-opus-4-8`), `ANTHROPIC_API_KEY`.
 
 Live: dashboard → anchor-dashboard.streamlit.app · dbt docs → timurakhtemov.github.io/Anchor
 

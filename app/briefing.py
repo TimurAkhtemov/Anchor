@@ -39,6 +39,11 @@ BRIEFING_TABLE = "copilot_briefing"
 # which a pipeline-time artifact can afford. Swap via ANCHOR_BRIEFING_MODEL.
 DEFAULT_MODEL = "gemma4:31b"
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
+# Cloud model for the demo world (docs/briefing_daily_note_design.md, lever D).
+# Deliberately a separate env var from ANCHOR_BRIEFING_MODEL, which stays pinned
+# to the Ollama model — sharing one var would send an Ollama model name to
+# Anthropic the moment the provider switched.
+DEFAULT_ANTHROPIC_MODEL = "claude-opus-4-8"
 
 # The numeric backbone: five served marts plus the shared trading calendar.
 CONTEXT_TABLES = [
@@ -82,8 +87,10 @@ ARTIFACT_COLUMNS = [
 
 TOUR_KIND_ORDER = {"regime": 0, "indicator": 1, "sector": 2, "allocation": 3, "holding": 4}
 
-# Ollama structured-output schema (grammar-enforced at generation time). Our own
-# validate_steps() re-checks everything the grammar can't know (entity existence,
+# Structured-output schema, schema-enforced at generation time by both providers
+# (Ollama grammar-constrains decoding; Anthropic takes it as output_config.format,
+# which requires additionalProperties: false on every object). Our own
+# validate_steps() re-checks everything the schema can't know (entity existence,
 # figure grounding, ordering).
 TOUR_SCHEMA = {
     "type": "object",
@@ -104,16 +111,19 @@ TOUR_SCHEMA = {
                             "key": {"type": "string"},
                         },
                         "required": ["kind"],
+                        "additionalProperties": False,
                     },
                     "narration": {"type": "string"},
                     "figures": {"type": "array", "items": {"type": "string"}},
                     "headline_refs": {"type": "array", "items": {"type": "integer"}},
                 },
                 "required": ["id", "target", "narration", "figures", "headline_refs"],
+                "additionalProperties": False,
             },
         }
     },
     "required": ["steps"],
+    "additionalProperties": False,
 }
 
 MIN_TOUR_STEPS = 6
@@ -138,8 +148,10 @@ class ValidationError(BriefingError):
 class BriefingProvider(Protocol):
     """Anchor's own tiny provider interface (deliberately not an OpenAI shim).
 
-    A future AnthropicProvider (official SDK, is_local=False) drops in here;
-    the generator's privacy guard keys off `is_local`.
+    Two implementations: OllamaProvider (local, the only one allowed for the
+    real portfolio) and AnthropicProvider (cloud, demo world only). The
+    generator's privacy guard keys off `is_local`; build_provider() refuses to
+    construct a cloud provider for the real portfolio in the first place.
     """
 
     name: str
@@ -152,7 +164,8 @@ class BriefingProvider(Protocol):
 
 
 class OllamaProvider:
-    """Local Ollama over HTTP. The only provider shipped in v1."""
+    """Local Ollama over HTTP. The default provider, and the only one the
+    real portfolio may ever use."""
 
     name = "ollama"
     is_local = True
@@ -194,6 +207,89 @@ class OllamaProvider:
             ) from exc
         resp.raise_for_status()
         return resp.json()["message"]["content"].strip()
+
+
+class AnthropicProvider:
+    """Anthropic Claude via the official SDK. Demo world only: is_local=False,
+    so both build_provider() and generate()'s privacy guard refuse it for the
+    real portfolio."""
+
+    name = "anthropic"
+    is_local = False
+
+    def __init__(self, model: str | None = None, max_tokens: int = 32_000):
+        # Construction stays SDK-free and key-free — tests and CI instantiate
+        # this without the package installed; the network surface is generate().
+        self.model = model or os.environ.get(
+            "ANCHOR_BRIEFING_CLOUD_MODEL", DEFAULT_ANTHROPIC_MODEL
+        )
+        self.max_tokens = max_tokens
+
+    def generate(
+        self, system: str, prompt: str, *, format_schema: dict | None = None
+    ) -> str:
+        import anthropic  # lazy: cloud path only, never needed by tests or the app deploy
+
+        kwargs: dict = {}
+        if format_schema is not None:
+            # Anthropic structured outputs: the schema constrains the response
+            # format (requires additionalProperties: false throughout).
+            kwargs["output_config"] = {
+                "format": {"type": "json_schema", "schema": format_schema}
+            }
+        client = anthropic.Anthropic()  # ANTHROPIC_API_KEY from the environment/.env
+        try:
+            # Opus 4.8 takes no temperature (sampling params are rejected);
+            # adaptive thinking replaces it as the quality lever. Streaming
+            # keeps the request clear of HTTP timeouts at this max_tokens.
+            with client.messages.stream(
+                model=self.model,
+                max_tokens=self.max_tokens,
+                thinking={"type": "adaptive"},
+                system=system,
+                messages=[{"role": "user", "content": prompt}],
+                **kwargs,
+            ) as stream:
+                message = stream.get_final_message()
+        except anthropic.AuthenticationError as exc:
+            raise BriefingError(
+                "Anthropic auth failed — set ANTHROPIC_API_KEY in .env"
+            ) from exc
+        except anthropic.APIStatusError as exc:
+            raise BriefingError(
+                f"Anthropic API error {exc.status_code}: {exc.message}"
+            ) from exc
+        except anthropic.APIConnectionError as exc:
+            raise BriefingError("Anthropic API not reachable — check the network") from exc
+        if message.stop_reason == "refusal":
+            raise BriefingError("Anthropic declined the request (stop_reason=refusal)")
+        text = "".join(block.text for block in message.content if block.type == "text")
+        return text.strip()
+
+
+def build_provider(portfolio: str) -> BriefingProvider:
+    """Resolve the provider from ANCHOR_BRIEFING_PROVIDER (default: ollama).
+
+    PRIVACY INTERLOCK, the assert_portfolio_isolation pattern: a cloud provider
+    combined with the real portfolio fails here, at construction — before a
+    client object even exists, let alone a network call. generate()'s is_local
+    check stays as the backstop for directly-constructed providers.
+    """
+    name = os.environ.get("ANCHOR_BRIEFING_PROVIDER", "ollama").strip().lower()
+    if name == "ollama":
+        return OllamaProvider()
+    if name == "anthropic":
+        if portfolio == "real":
+            raise PrivacyError(
+                "PRIVACY INTERLOCK: ANCHOR_BRIEFING_PROVIDER=anthropic cannot be "
+                "combined with the real portfolio — real briefings are local-only. "
+                "Unset the provider or use the demo portfolio "
+                "(docs/briefing_daily_note_design.md)."
+            )
+        return AnthropicProvider()
+    raise BriefingError(
+        f"unknown ANCHOR_BRIEFING_PROVIDER {name!r} — expected 'ollama' or 'anthropic'"
+    )
 
 
 # --- inputs: marts + news -----------------------------------------------------
@@ -431,7 +527,12 @@ Output a single JSON object {"steps": [...]} and nothing else. Each step:
 
 Tour structure: exactly one "regime" step first; one or two "indicator" steps for the most consequential indicators; one or two "sector" steps for the sectors most relevant to the portfolio; exactly one "allocation" step describing the portfolio's shape (index-tracking core positions may get their one combined mention here); then three to five "holding" steps for only the genuinely notable positions — the largest benchmark-relative moves and clear outliers, never a recitation of every holding. 6 to 12 steps total.
 
-Where a NEWS item relates to a step's target, weave it into that step's narration, naming the outlet given in that NEWS item and listing the item's index in headline_refs. Use only items from the NEWS section, never attribute anything to an outlet that is not listed there, and never merge details from two items under one outlet.
+Editorial voice, every step:
+- Verdict first: open the narration with the step's takeaway stated as a plain claim, then support it. Never open with a label, a name, or a number.
+- The reader sees the dashboard beside your words — every label and figure is already on screen. Never restate what a target displays without adding something the screen cannot show: a relation (to the regime, its sector, a benchmark, or another DATA figure) or a cause. A figure may only appear inside such a sentence; a sentence that merely re-reads the card must be cut.
+- Every step must answer "so what for this portfolio": tie the observation to the portfolio's actual exposure — its weights, its holdings, the benchmark verdicts printed in DATA. An observation with no consequence for this portfolio does not earn a step.
+
+Where a NEWS item relates to a step's target, weave it into that step's narration, naming the outlet given in that NEWS item and listing the item's index in headline_refs. Attribute every news reference this way or omit the news entirely — an unattributed mention is not allowed. Use only items from the NEWS section, never attribute anything to an outlet that is not listed there, and never merge details from two items under one outlet.
 
 Grounding rules, non-negotiable:
 - Every numeric claim must be copied verbatim from the DATA section, formatted exactly as it appears there. Write percentage-point differences as "pp" exactly as DATA does — never spell out "percentage points".

@@ -6,3 +6,4 @@ db-dtypes
 yfinance
 pytest
 snaptrade-python-sdk
+anthropic

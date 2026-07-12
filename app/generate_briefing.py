@@ -1,15 +1,22 @@
 """Generate the LLM copilot briefing and write it into the active marts dataset.
 
 Pipeline-time step (see docs/llm_copilot_briefing_design.md): reads the served
-marts, fetches held-ticker headlines, generates via local Ollama, validates,
-then WRITE_TRUNCATEs `copilot_briefing`. A failure exits non-zero, which halts
-`make refresh` before the snapshot export — the strict failure policy.
+marts, fetches held-ticker headlines, generates via the configured provider
+(local Ollama by default), validates, then WRITE_TRUNCATEs `copilot_briefing`.
+A failure exits non-zero, which halts `make refresh` before the snapshot
+export — the strict failure policy.
 
-Run locally (needs BigQuery creds + Ollama running):
+Run locally (needs BigQuery creds + Ollama running, unless on the cloud provider):
     python app/generate_briefing.py --portfolio demo
     python app/generate_briefing.py --portfolio real   # local provider enforced in code
 
-Config (.env, optional): ANCHOR_BRIEFING_MODEL, OLLAMA_HOST.
+Config (.env, optional):
+    ANCHOR_BRIEFING_PROVIDER     ollama (default) | anthropic — cloud is DEMO ONLY;
+                                 combined with --portfolio real it hard-fails
+    ANCHOR_BRIEFING_MODEL        Ollama model (default gemma4:31b)
+    OLLAMA_HOST                  Ollama endpoint
+    ANCHOR_BRIEFING_CLOUD_MODEL  Anthropic model (default claude-opus-4-8)
+    ANTHROPIC_API_KEY            required for the anthropic provider
 """
 
 from __future__ import annotations
@@ -34,9 +41,11 @@ def main() -> None:
 
     load_dotenv()
 
-    provider = briefing.OllamaProvider()
-    client = briefing.build_bigquery_client()
     try:
+        # Provider resolution first: the cloud+real privacy interlock must fire
+        # before any client (BigQuery included) is even constructed.
+        provider = briefing.build_provider(args.portfolio)
+        client = briefing.build_bigquery_client()
         summary = briefing.generate(
             args.portfolio, provider, client, skip_news=args.no_news
         )
