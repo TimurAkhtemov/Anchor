@@ -123,7 +123,9 @@ portfolio structurally requires a local provider). One row, grain `horizon='all'
 `sources` JSON persists the headlines fed to the prompt as the audit trail;
 `briefing_json` carries the structured tour script (per-step targets/figures,
 hard-validated — see `docs/immersive_briefing_design.md`) and `briefing_md` is
-assembled from its narrations. Not in dbt
+assembled from its narrations. The briefing's next evolution is designed and locked:
+`docs/briefing_daily_note_design.md` (v3 "Daily Note" — active arc on
+`feat/briefing-daily-note`; read it before briefing/web work). Not in dbt
 lineage (documented limitation); the only served table whose absence the app tolerates
 (sidebar falls back to the deterministic v0 lines). Design:
 `docs/llm_copilot_briefing_design.md`.

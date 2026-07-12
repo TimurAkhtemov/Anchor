@@ -1,11 +1,14 @@
 # Anchor — Session Handoff
 
-_Last updated: 2026-07-09 ("make it real" capstone complete + pushed: dynamic holdings
-ingestion (SnapTrade live + Fidelity CSV), asset-class-aware benchmarking (5 classes ×
-5 axes), `portfolio_composition` sizing mart, structural demo/private isolation, a
-composition-driven app, the `holdings_demo` Dagster asset, and refreshed docs/snapshot.
-Next = **Dagster+ Serverless** for the unattended scheduled run — the last item on the
-ops capstone). The **`README.md` is the canonical project doc** —
+_Last updated: 2026-07-12 (LLM briefing shipped PRs #5/#6; structured tour script +
+immersive web tour page shipped PRs #7/#8, both merged — `web/` is a Next 16
+static-export surface with its own secrets-free CI job. Product review of the tour
+prompted the **briefing v3 "Daily Note" arc**: design committed as
+`docs/briefing_daily_note_design.md` on `feat/briefing-daily-note`.
+Next = **phase ① of that doc: provider seam (cloud model for demo only, structural
+guard) + editorial voice rules**. Still pending, user-owned: Vercel connect for
+`web/` + the public-URL swap; Dagster+ Serverless for the unattended run).
+The **`README.md` is the canonical project doc** —
 architecture, model map, design decisions, limitations, roadmap. Read it first. This
 file is just the lean "current state + what's next" pointer. Also see `CLAUDE.md`
 (working style) and `docs/` (deferred roadmaps)._
