@@ -53,6 +53,12 @@ streamlit run app/app.py
 python app/export_snapshot.py    # refresh the committed snapshot the live demo reads
 python app/generate_briefing.py --portfolio demo   # LLM briefing -> copilot_briefing (needs Ollama running)
 
+# Web tour surface (web/ — Next.js static export; heed web/AGENTS.md before writing code there)
+python app/export_web.py                      # refresh committed web/public/data/anchor.json (or: make export-web)
+cd web && npm run dev                         # local dev
+cd web && npm run build                       # static export -> web/out/ (what CI and Vercel run)
+cd web && npm run build && npm run test:e2e   # Playwright: resolver units + browser smoke (serves out/)
+
 # Pipeline steps (tool-agnostic; the Makefile is what Dagster wraps as assets)
 make ingest | make ingest-holdings-demo | make ingest-holdings-real | make build-prod | make build-private | make briefing | make briefing-real | make snapshot | make refresh
 ```
