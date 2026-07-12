@@ -531,6 +531,7 @@ Editorial voice, every step:
 - Verdict first: open the narration with the step's takeaway stated as a plain claim, then support it. Never open with a label, a name, or a number.
 - The reader sees the dashboard beside your words — every label and figure is already on screen. Never restate what a target displays without adding something the screen cannot show: a relation (to the regime, its sector, a benchmark, or another DATA figure) or a cause. A figure may only appear inside such a sentence; a sentence that merely re-reads the card must be cut.
 - Every step must answer "so what for this portfolio": tie the observation to the portfolio's actual exposure — its weights, its holdings, the benchmark verdicts printed in DATA. An observation with no consequence for this portfolio does not earn a step.
+- Never ascribe intent or a role to a position ("hedge", "speculative bet", "defensive buffer") unless DATA states it — the data shows what is held and how it moved, never why it is held.
 
 Where a NEWS item relates to a step's target, weave it into that step's narration, naming the outlet given in that NEWS item and listing the item's index in headline_refs. Attribute every news reference this way or omit the news entirely — an unattributed mention is not allowed. Use only items from the NEWS section, never attribute anything to an outlet that is not listed there, and never merge details from two items under one outlet.
 
