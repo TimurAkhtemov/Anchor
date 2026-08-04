@@ -4,6 +4,7 @@ import types
 import pytest
 
 from ingestion.ingest_holdings import (
+    _normalize_snaptrade_position,
     _snaptrade_user_kwargs,
     _usd_cash_total,
     fetch_snaptrade_positions,
@@ -50,6 +51,44 @@ def test_commercial_auth_includes_user_fields(monkeypatch):
     monkeypatch.setenv("SNAPTRADE_USER_ID", "app-user")
     monkeypatch.setenv("SNAPTRADE_USER_SECRET", "secret")
     assert _snaptrade_user_kwargs() == {"user_id": "app-user", "user_secret": "secret"}
+
+
+def test_unified_position_payload_normalizes_instrument_and_cost_basis():
+    row = _normalize_snaptrade_position(
+        {
+            "instrument": {
+                "kind": "stock",
+                "symbol": "EXAMPLE",
+                "raw_symbol": "EXAMPLE",
+                "description": "Example Corp",
+            },
+            "units": "2.5",
+            "price": "40.00",
+            "cost_basis": "32.00",
+            "cash_equivalent": False,
+        },
+        "account-1",
+        "Brokerage",
+    )
+    assert row == {
+        "account_number": "account-1",
+        "account_name": "Brokerage",
+        "ticker": "EXAMPLE",
+        "description": "Example Corp",
+        "quantity": 2.5,
+        "price": 40.0,
+        "market_value": 100.0,
+        "cost_basis_total": 80.0,
+    }
+
+
+def test_position_without_instrument_identity_fails_closed():
+    with pytest.raises(RuntimeError, match="refusing cash fallback"):
+        _normalize_snaptrade_position(
+            {"instrument": {}, "units": "2", "price": "10"},
+            "account-1",
+            "Brokerage",
+        )
 
 
 def test_snaptrade_transport_failure_is_sanitized(monkeypatch):
