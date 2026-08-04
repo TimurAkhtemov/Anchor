@@ -36,3 +36,9 @@ Never commit `.env`, service-account keys, brokerage data, or `data/private/`. B
 ## Current Deployment Decision
 
 Anchor remains local-first for orchestration. Use `make dagster` for local runs; do not deploy or enable Dagster+ Serverless while the app has no public-user need that justifies its recurring cost. The completed Serverless implementation is preserved on `feat/dagster-serverless` at commit `90d5625` and is intentionally absent from `main`. Resume that branch only with renewed deployment authorization. Until then, do not add Dagster+ secrets, push its deployment workflow, enable cloud schedules, or publish snapshots through it.
+
+The private exception is local-only and already authorized: `scripts/private_daily.py`
+runs the real SnapTrade → `prod-private` pipeline under user-level macOS LaunchAgents,
+and the real dashboard binds only to `127.0.0.1`. Preserve this separation. Never add a
+private snapshot/web export, point the private runner at `prod`, or expose its dashboard
+on a LAN/public interface. See `docs/private_daily_operations.md`.

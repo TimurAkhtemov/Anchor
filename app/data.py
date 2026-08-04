@@ -11,6 +11,7 @@ DataFrames, never raw joins.
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -58,6 +59,27 @@ if PORTFOLIO == "real" and SOURCE == "snapshot":
 # Marts refresh post-close (daily), never intraday — an hour TTL is plenty and
 # keeps repeated reruns off the warehouse.
 CACHE_TTL = 60 * 60
+
+
+def private_pipeline_status() -> dict | None:
+    """Latest local private-refresh status, never present in the demo world.
+
+    The status file contains timestamps and stage names only—no brokerage
+    values—and is written atomically by ``scripts/private_daily.py``.
+    """
+    if PORTFOLIO != "real":
+        return None
+    path = Path(
+        os.environ.get(
+            "ANCHOR_PRIVATE_STATUS_PATH",
+            Path(__file__).parent.parent / "var" / "private_daily_status.json",
+        )
+    )
+    try:
+        payload = json.loads(path.read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
 
 
 @st.cache_resource
@@ -143,6 +165,8 @@ def copilot_briefing() -> pd.Series | None:
     exists — the only served table whose absence is a legitimate state (the
     generator hasn't run yet, or this world has never produced one). Written
     by app/generate_briefing.py, not dbt."""
+    if os.environ.get("ANCHOR_DISABLE_LLM_BRIEFING") == "1":
+        return None
     df = _read_optional("copilot_briefing")
     if df is None or df.empty:
         return None

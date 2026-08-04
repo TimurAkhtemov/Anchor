@@ -129,6 +129,23 @@ def _usd_cash_total(balances: list[dict]) -> float:
     return total
 
 
+def _snaptrade_user_kwargs() -> dict[str, str]:
+    """Commercial user credentials, or no user fields for a Personal key.
+
+    SnapTrade Personal authentication resolves the account owner from the
+    signed API key and rejects the legacy empty-user-secret workaround. An
+    empty/missing user secret therefore means Personal mode; Commercial keys
+    still require both explicit fields.
+    """
+    secret = os.environ.get("SNAPTRADE_USER_SECRET", "")
+    if not secret:
+        return {}
+    user_id = os.environ.get("SNAPTRADE_USER_ID")
+    if not user_id:
+        raise RuntimeError("SNAPTRADE_USER_ID is required for Commercial authentication")
+    return {"user_id": user_id, "user_secret": secret}
+
+
 def fetch_snaptrade_positions() -> list[dict]:
     """Pull live positions for every connected account, normalized to the same
     dict shape parse_fidelity_positions produces.
@@ -146,26 +163,32 @@ def fetch_snaptrade_positions() -> list[dict]:
     mapped to a ticker=None row, which staging's CASH path picks up.
     """
     from dotenv import load_dotenv
-    from snaptrade_client import SnapTrade
+    from snaptrade_client import SnapTrade, SnapTradeAuth
     from snaptrade_client.exceptions import OpenApiException
+    from urllib3.exceptions import HTTPError as Urllib3HTTPError
 
     load_dotenv()
-    snaptrade = SnapTrade(
-        client_id=os.environ["SNAPTRADE_CLIENT_ID"],
-        consumer_key=os.environ["SNAPTRADE_CONSUMER_KEY"],
+    user_kwargs = _snaptrade_user_kwargs()
+    auth_factory = (
+        SnapTradeAuth.commercial_api_key if user_kwargs else SnapTradeAuth.personal_api_key
     )
-    uid = os.environ["SNAPTRADE_USER_ID"]
-    sec = os.environ["SNAPTRADE_USER_SECRET"]
+    snaptrade = SnapTrade(
+        auth=auth_factory(
+            client_id=os.environ["SNAPTRADE_CLIENT_ID"],
+            consumer_key=os.environ["SNAPTRADE_CONSUMER_KEY"],
+        )
+    )
 
     try:
         rows: list[dict] = []
-        accounts = snaptrade.account_information.list_user_accounts(user_id=uid, user_secret=sec).body
+        accounts = snaptrade.account_information.list_user_accounts(**user_kwargs).body
         for account in accounts:
             account_number = account.get("number") or account["id"]
             account_name = account.get("name")
-            positions = snaptrade.account_information.get_user_account_positions(
-                user_id=uid, user_secret=sec, account_id=account["id"]
+            positions_payload = snaptrade.account_information.get_all_account_positions(
+                account_id=account["id"], **user_kwargs
             ).body
+            positions = positions_payload["results"]
 
             cash_equivalent_value = 0.0
             for p in positions:
@@ -197,7 +220,7 @@ def fetch_snaptrade_positions() -> list[dict]:
 
             # Residual cash the positions don't already cover (sweep-less brokers).
             balances = snaptrade.account_information.get_user_account_balance(
-                user_id=uid, user_secret=sec, account_id=account["id"]
+                account_id=account["id"], **user_kwargs
             ).body
             cash_balance = _usd_cash_total(balances)
             residual = cash_balance - cash_equivalent_value
@@ -215,13 +238,12 @@ def fetch_snaptrade_positions() -> list[dict]:
                     }
                 )
         return rows
-    except OpenApiException as exc:
-        # Never let a raw SnapTrade ApiException escape: its __str__ includes
-        # the full HTTP response headers/body. Re-raise with only the
-        # exception type + status, same sanitization as snaptrade_connect.py.
-        # Scoped to the SDK's own exception base so our own normalization bugs
-        # above (KeyError, TypeError, ...) propagate with a normal traceback
-        # instead of being swallowed and misreported as an API failure.
+    except (OpenApiException, Urllib3HTTPError) as exc:
+        # Never let raw SDK/API transport exceptions escape: their repr/string
+        # can contain the full URL query, response headers, or body. Re-raise
+        # with only the exception type + status. This stays scoped to the SDK
+        # and its urllib3 transport so our own normalization bugs (KeyError,
+        # TypeError, ...) still propagate with a useful traceback.
         raise RuntimeError(
             f"SnapTrade API call failed: {type(exc).__name__}, status={getattr(exc, 'status', 'n/a')}"
         ) from None

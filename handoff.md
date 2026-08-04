@@ -13,7 +13,13 @@ A/B'd old-vs-new prompt on gemma4:31b, validation stayed green, user cleared it.
 AnthropicProvider is dormant-but-ready; the cloud model activates later alongside
 Dagster+ and the public deploy. Next = **phase ② derived-signal marts**. Still
 pending, user-owned: Vercel connect for `web/` + the public-URL swap; Dagster+
-Serverless for the unattended run).
+Serverless for the unattended **public/demo** run). **Private daily operation shipped
+locally 2026-08-04** on `feat/private-daily-ops`: SnapTrade Personal auth updated to
+the current signed-key contract, weekday 18:30 ET LaunchAgent refresh, localhost-only
+real dashboard, atomic freshness status, sanitized SDK failures, and a temporary
+`--skip-briefing` switch for local-model conflicts. The first data-only acceptance run
+passed the real `prod-private` build 154/154 with market data as of 2026-08-03. See
+`docs/private_daily_operations.md`.
 The **`README.md` is the canonical project doc** —
 architecture, model map, design decisions, limitations, roadmap. Read it first. This
 file is just the lean "current state + what's next" pointer. Also see `CLAUDE.md`
@@ -21,8 +27,9 @@ file is just the lean "current state + what's next" pointer. Also see `CLAUDE.md
 
 ## State of the world
 
-**Bronze → silver → gold → serve is complete, tested, and green — `dbt build` = 140/140**
-(18 models, 118 tests, 1 snapshot, 2 seeds, 1 hook). The full `macro → sector → holdings`
+**Bronze → silver → gold → serve is complete, tested, and green — the latest real
+`prod-private` acceptance build is 154/154** (20 models, 130 tests, 1 snapshot,
+2 seeds, 1 hook). The full `macro → sector → holdings`
 spine is built, verified against real data (both demo and a real portfolio), and rendered
 by a Streamlit dashboard whose holdings tier is now driven by actual position weights
 across five asset classes, not a static watchlist.

@@ -10,8 +10,8 @@ This is a portfolio project targeting analytics-engineering roles. The deliverab
 is the **build** — layered dbt modeling, deliberate design decisions, and honest
 treatment of limitations — not just a working chart.
 
-> **Status:** bronze → silver → gold → serve is built, tested, and green (140/140 dbt
-> nodes), and **deployed live: [anchor-dashboard.streamlit.app](https://anchor-dashboard.streamlit.app)**.
+> **Status:** bronze → silver → gold → serve is built, tested, and green, and
+> **deployed live: [anchor-dashboard.streamlit.app](https://anchor-dashboard.streamlit.app)**.
 > Holdings are now **dynamic** — a real portfolio (SnapTrade live pull or Fidelity CSV
 > export) replaces the static 6-stock watchlist, sized by actual position weights and
 > benchmarked **per asset class** across five axes. A strict demo/private split (separate
@@ -21,6 +21,11 @@ treatment of limitations — not just a working chart.
 > on every PR), **dbt docs/lineage**, and **orchestration** (a Dagster `dagster-dbt` asset
 > graph, `orchestration/`) are built. Full design + honest caveats:
 > `docs/make_it_real_design.md`.
+> **Private daily operation** is also live locally: a weekday 18:30 ET macOS
+> service refreshes read-only SnapTrade holdings, shared market data, isolated
+> `anchor_*_private` marts, and the local briefing. A localhost-only real
+> dashboard stays available at `127.0.0.1:8501`. See
+> `docs/private_daily_operations.md`.
 
 ---
 
@@ -224,11 +229,10 @@ belong in Anchor.
 Surfacing these is the point — analytical maturity is knowing what your numbers *don't*
 say.
 
-- **Quantities are as-of the last import; prices are daily.** Market value recomputes
-  daily (`quantity × latest_close`) but the quantity itself only refreshes on the next
-  holdings pull — between imports, value mixes a fresh price with a stale share count.
-  Mitigated by SnapTrade re-pulls (a manual `ingest-holdings-real` run away, not yet
-  scheduled); not solved until pulls are automated.
+- **Quantities refresh once per weekday, not continuously.** The private 18:30 ET
+  service re-pulls SnapTrade holdings before recomputing market value. Changes made
+  after that run remain stale until the next successful refresh; the dashboard exposes
+  the last success and market as-of date rather than implying intraday freshness.
 - **CSV real-import path is unvalidated.** SnapTrade became the primary real-data
   transport; the CSV loader's Fidelity-export parser is proven only against the
   committed sample file's format (same shape by construction, not a real export). If
@@ -340,6 +344,13 @@ export at `data/private/fidelity_positions.csv` (gitignored) plus a
 — builds into `anchor_*_private`, isolated from every public target by the compile-time
 interlock above. Or connect live: `python ingestion/snaptrade_connect.py` once, then
 `python ingestion/ingest_holdings.py --from-snaptrade --portfolio real`.
+
+For daily private use, run `make bootstrap-private`, then
+`make install-private-services`. This installs a weekday 18:30 ET refresh and a
+localhost-only real dashboard at <http://127.0.0.1:8501>. Use
+`make private-status` for the last result or append `--skip-briefing` to the private
+runner during a temporary local-model conflict. Full operations and privacy contract:
+`docs/private_daily_operations.md`.
 
 Run dbt from inside `transformation/` (local dbt is dbt-fusion, whose `--project-dir` flag
 mishandles seeds — so `cd` in first). Useful selectors: `dbt build --select staging`,
