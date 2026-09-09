@@ -15,7 +15,9 @@ Dagster+ and the public deploy. Next = **phase ② derived-signal marts**. Still
 pending, user-owned: Vercel connect for `web/` + the public-URL swap; Dagster+
 Serverless for the unattended run).
 The **`README.md` is the canonical project doc** —
-architecture, model map, design decisions, limitations, roadmap. Read it first. This
+pitch, design decisions, limitations, roadmap — with the full inventory (model map, data
+sources, serve layer, orchestration) in `docs/architecture.md` and commands in
+`docs/setup.md`. Read the README first. This
 file is just the lean "current state + what's next" pointer. Also see `CLAUDE.md`
 (working style) and `docs/` (deferred roadmaps)._
 
