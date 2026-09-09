@@ -92,7 +92,7 @@ enforced dbt contracts, so column or type drift fails the build before the app b
 export as downstream consumers. Source freshness thresholds are set on the FRED and
 yfinance sources.
 
-**Tests.** 118 tests across the project: uniqueness and not-null on composite grains,
+**Tests.** 130 tests across the project: uniqueness and not-null on composite grains,
 accepted values on every categorical, relationship tests between layers, and five singular
 guardrail tests in `tests/`:
 

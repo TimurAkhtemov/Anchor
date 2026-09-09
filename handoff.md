@@ -23,8 +23,8 @@ file is just the lean "current state + what's next" pointer. Also see `CLAUDE.md
 
 ## State of the world
 
-**Bronze → silver → gold → serve is complete, tested, and green — `dbt build` = 140/140**
-(18 models, 118 tests, 1 snapshot, 2 seeds, 1 hook). The full `macro → sector → holdings`
+**Bronze → silver → gold → serve is complete, tested, and green — `dbt build` = 154/154**
+(20 models, 130 tests, 1 snapshot, 2 seeds, 1 hook). The full `macro → sector → holdings`
 spine is built, verified against real data (both demo and a real portfolio), and rendered
 by a Streamlit dashboard whose holdings tier is now driven by actual position weights
 across five asset classes, not a static watchlist.

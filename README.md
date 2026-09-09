@@ -17,8 +17,8 @@ of limitations, not just a working chart.
 
 ## What's here
 
-- **A full bronze → silver → gold → serve pipeline**, green at 140/140 dbt nodes
-  (18 models, 118 tests, 1 SCD2 snapshot, 2 seeds, 1 hook), deployed and documented.
+- **A full bronze → silver → gold → serve pipeline**, green at 154/154 dbt nodes
+  (20 models, 130 tests, 1 SCD2 snapshot, 2 seeds, 1 hook), deployed and documented.
 - **Dynamic, multi-asset holdings.** A real portfolio (SnapTrade live pull or Fidelity
   CSV) feeds the gold layer. Five asset classes route through one generic benchmark model
   to up to five comparison axes each.
