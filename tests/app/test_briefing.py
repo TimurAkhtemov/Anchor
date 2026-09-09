@@ -420,6 +420,51 @@ def test_generate_rejects_unknown_portfolio():
         briefing.generate("staging", FakeProvider("x"), client=None)
 
 
+# The ANCHOR_BRIEFING_PROVIDER factory: same interlock, one layer earlier —
+# a cloud provider for the real portfolio must fail at construction, before a
+# client object even exists.
+
+
+def test_build_provider_defaults_to_ollama(monkeypatch):
+    monkeypatch.delenv("ANCHOR_BRIEFING_PROVIDER", raising=False)
+    assert isinstance(briefing.build_provider("demo"), briefing.OllamaProvider)
+
+
+def test_build_provider_anthropic_for_demo(monkeypatch):
+    monkeypatch.setenv("ANCHOR_BRIEFING_PROVIDER", "anthropic")
+    # No API key in the environment: construction must not touch the SDK or
+    # the network — generate() is the only network surface.
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANCHOR_BRIEFING_CLOUD_MODEL", raising=False)
+    provider = briefing.build_provider("demo")
+    assert isinstance(provider, briefing.AnthropicProvider)
+    assert provider.is_local is False
+    assert provider.model == briefing.DEFAULT_ANTHROPIC_MODEL
+
+
+def test_build_provider_cloud_model_env_override(monkeypatch):
+    monkeypatch.setenv("ANCHOR_BRIEFING_PROVIDER", "anthropic")
+    monkeypatch.setenv("ANCHOR_BRIEFING_CLOUD_MODEL", "claude-sonnet-5")
+    assert briefing.build_provider("demo").model == "claude-sonnet-5"
+
+
+def test_build_provider_refuses_cloud_for_real(monkeypatch):
+    monkeypatch.setenv("ANCHOR_BRIEFING_PROVIDER", "anthropic")
+    with pytest.raises(briefing.PrivacyError):
+        briefing.build_provider("real")
+
+
+def test_build_provider_real_stays_local_by_default(monkeypatch):
+    monkeypatch.delenv("ANCHOR_BRIEFING_PROVIDER", raising=False)
+    assert briefing.build_provider("real").is_local is True
+
+
+def test_build_provider_rejects_unknown_name(monkeypatch):
+    monkeypatch.setenv("ANCHOR_BRIEFING_PROVIDER", "openai")
+    with pytest.raises(briefing.BriefingError):
+        briefing.build_provider("demo")
+
+
 # --- 6. news scoping helper ---------------------------------------------------------
 
 

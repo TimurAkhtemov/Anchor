@@ -70,8 +70,13 @@ demo world (ingest → build-prod → briefing → snapshot; the briefing step n
 Ollama, and its failure halts the chain before the snapshot exports — strict by design).
 Real-portfolio builds are always a manual `make build-private` (+ `make briefing-real`),
 never part of the scheduled/public pipeline. Optional `.env` config for the briefing:
+`ANCHOR_BRIEFING_PROVIDER` (`ollama` default; `anthropic` = cloud model, DEMO world only —
+a structural guard in `build_provider` hard-fails cloud + real before any network call;
+**scope: the cloud path is deferred until public deployment — everything stays local/Ollama
+for the MVP**, no API key in `.env` by design),
 `ANCHOR_BRIEFING_MODEL` (default `gemma4:31b` — won the post-ship A/B on verdict/attribution
-discipline; ~4 min/generation is fine at pipeline time), `OLLAMA_HOST`.
+discipline; ~4 min/generation is fine at pipeline time), `OLLAMA_HOST`,
+`ANCHOR_BRIEFING_CLOUD_MODEL` (default `claude-opus-4-8`), `ANTHROPIC_API_KEY`.
 
 Live: dashboard → anchor-dashboard.streamlit.app · dbt docs → timurakhtemov.github.io/Anchor
 
@@ -123,7 +128,9 @@ portfolio structurally requires a local provider). One row, grain `horizon='all'
 `sources` JSON persists the headlines fed to the prompt as the audit trail;
 `briefing_json` carries the structured tour script (per-step targets/figures,
 hard-validated — see `docs/immersive_briefing_design.md`) and `briefing_md` is
-assembled from its narrations. Not in dbt
+assembled from its narrations. The briefing's next evolution is designed and locked:
+`docs/briefing_daily_note_design.md` (v3 "Daily Note" — active arc on
+`feat/briefing-daily-note`; read it before briefing/web work). Not in dbt
 lineage (documented limitation); the only served table whose absence the app tolerates
 (sidebar falls back to the deterministic v0 lines). Design:
 `docs/llm_copilot_briefing_design.md`.
