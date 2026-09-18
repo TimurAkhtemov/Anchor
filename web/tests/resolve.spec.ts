@@ -13,8 +13,14 @@ import type {
   TourStep,
 } from "../src/lib/types";
 import bundleJson from "../public/data/anchor.json";
+import frozenJson from "./fixtures/anchor-2026-07.json";
 
+// `bundle` is the live committed export: its briefing is LLM-generated and
+// changes on every refresh, so only invariants may be asserted against it.
+// `frozen` is a pinned copy of the 2026-07-08 export: exact expectations live
+// here, where a data refresh can't invalidate them.
 const bundle = bundleJson as unknown as AnchorBundle;
+const frozen = frozenJson as unknown as AnchorBundle;
 
 test.describe("parseFigure", () => {
   test("parses % and pp display strings", () => {
@@ -31,9 +37,9 @@ test.describe("parseFigure", () => {
   });
 });
 
-test.describe("resolveStepFocus against the committed bundle", () => {
-  // Regression pins: verified against the live narrations (HIMS cites its 1m
-  // sector comparison; TALO and JPM cite 1y; JPM mixes a 1m % with a 1y pp —
+test.describe("resolveStepFocus against the frozen 2026-07 bundle", () => {
+  // Regression pins: verified against that bundle's narrations (HIMS cites its
+  // 1m sector comparison; TALO and JPM cite 1y; JPM mixes a 1m % with a 1y pp —
   // the pp must win the horizon).
   const expected: Record<string, { horizon: string; axis: string | null }> = {
     AAPL: { horizon: "1y", axis: "cap_style" },
@@ -44,32 +50,55 @@ test.describe("resolveStepFocus against the committed bundle", () => {
   };
 
   test("holding steps resolve to the narrated (axis, horizon) cell", () => {
+    const holdingSteps = frozen.briefing.steps.filter(
+      (s) => s.target.kind === "holding",
+    );
+    expect(holdingSteps.map((s) => s.target.key).sort()).toEqual(
+      Object.keys(expected).sort(),
+    );
+    for (const step of holdingSteps) {
+      expect(
+        resolveStepFocus(step, frozen),
+        `step ${step.id} (${step.target.key})`,
+      ).toEqual({ kind: "holding", ...expected[step.target.key ?? ""] });
+    }
+  });
+
+  test("sector steps resolve to the cited horizon", () => {
+    const focuses = frozen.briefing.steps
+      .filter((s) => s.target.kind === "sector")
+      .map((s) => [s.target.key, resolveStepFocus(s, frozen)]);
+    expect(focuses).toEqual([
+      ["XLV", { kind: "sector", horizon: "1m" }],
+      ["XLF", { kind: "sector", horizon: "ytd" }],
+    ]);
+  });
+});
+
+test.describe("resolveStepFocus against the live committed bundle", () => {
+  test("holding steps satisfy the resolver's invariants", () => {
     const holdingSteps = bundle.briefing.steps.filter(
       (s) => s.target.kind === "holding",
     );
     expect(holdingSteps.length).toBeGreaterThan(0);
     for (const step of holdingSteps) {
       const focus = resolveStepFocus(step, bundle);
-      const want = expected[step.target.key ?? ""];
-      if (want) {
-        expect(focus, `step ${step.id} (${step.target.key})`).toEqual({
-          kind: "holding",
-          ...want,
-        });
-      } else {
-        expect(focus.kind).toBe("holding");
+      if (focus.kind !== "holding") {
+        throw new Error(`step ${step.id}: resolved to ${focus.kind}`);
+      }
+      // The tour never spotlights the daily column.
+      expect(["1m", "ytd", "1y"], `step ${step.id}`).toContain(focus.horizon);
+      // A non-null axis must be a cell the mart actually serves for this
+      // ticker (asset-class routing varies: BND has no sector axis).
+      if (focus.axis !== null) {
+        const axes = bundle.holdings_benchmarks
+          .filter((r) => r.holding_ticker === step.target.key)
+          .map((r) => r.benchmark_type);
+        expect(axes, `step ${step.id} (${step.target.key})`).toContain(
+          focus.axis,
+        );
       }
     }
-  });
-
-  test("sector steps resolve to the cited horizon", () => {
-    const focuses = bundle.briefing.steps
-      .filter((s) => s.target.kind === "sector")
-      .map((s) => [s.target.key, resolveStepFocus(s, bundle)]);
-    expect(focuses).toEqual([
-      ["XLV", { kind: "sector", horizon: "1m" }],
-      ["XLF", { kind: "sector", horizon: "ytd" }],
-    ]);
   });
 
   test("regime/indicator/allocation steps are static", () => {
