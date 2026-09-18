@@ -1,364 +1,103 @@
-# Anchor — Session Handoff
+# Anchor — Handoff
 
-_Last updated: 2026-07-12 (LLM briefing shipped PRs #5/#6; structured tour script +
-immersive web tour page shipped PRs #7/#8, both merged — `web/` is a Next 16
-static-export surface with its own secrets-free CI job. Product review of the tour
-prompted the **briefing v3 "Daily Note" arc**: design committed as
-`docs/briefing_daily_note_design.md` on `feat/briefing-daily-note`.
-**Phase ① shipped 2026-07-12 on that branch**: provider seam
-(`ANCHOR_BRIEFING_PROVIDER`, cloud = demo-only with a construction-time privacy
-interlock in `build_provider()`) + editorial voice rules in `SYSTEM_PROMPT` —
-A/B'd old-vs-new prompt on gemma4:31b, validation stayed green, user cleared it.
-**Scope decision: everything stays LOCAL (Ollama) until public deployment** — the
-AnthropicProvider is dormant-but-ready; the cloud model activates later alongside
-Dagster+ and the public deploy. Next = **phase ② derived-signal marts**. Still
-pending, user-owned: Vercel connect for `web/` + the public-URL swap; Dagster+
-Serverless for the unattended **public/demo** run). **Private daily operation shipped
-locally 2026-08-04** on `feat/private-daily-ops`: SnapTrade Personal auth updated to
-the current signed-key contract, weekday 21:30 ET LaunchAgent refresh, localhost-only
-real dashboard, atomic freshness status, sanitized SDK failures, and a temporary
-`--skip-briefing` switch for local-model conflicts. The first data-only acceptance run
-passed the real `prod-private` build 154/154 with market data as of 2026-08-03. See
-`docs/private_daily_operations.md`.
-The **`README.md` is the canonical project doc** —
-pitch, design decisions, limitations, roadmap — with the full inventory (model map, data
-sources, serve layer, orchestration) in `docs/architecture.md` and commands in
-`docs/setup.md`. Read the README first. This
-file is just the lean "current state + what's next" pointer. Also see `CLAUDE.md`
-(working style) and `docs/` (deferred roadmaps)._
+_Last updated: 2026-09-18._ The lean "current state + what's next" pointer. The
+**`README.md` is the canonical project doc** (pitch, design decisions, limitations,
+roadmap); the full inventory is `docs/architecture.md`; commands are `docs/setup.md`;
+working style is `CLAUDE.md`. This file holds only what those don't: where things stand
+today, operator steps still owed, deviations from the locked designs, and gotchas.
 
-## State of the world
+## Where things stand
 
-**Bronze → silver → gold → serve is complete, tested, and green — `dbt build` = 154/154**
-(20 models, 130 tests, 1 snapshot, 2 seeds, 1 hook; the real `prod-private` acceptance
-build matches). The full `macro → sector → holdings`
-spine is built, verified against real data (both demo and a real portfolio), and rendered
-by a Streamlit dashboard whose holdings tier is now driven by actual position weights
-across five asset classes, not a static watchlist.
+- **Bronze → silver → gold → serve is built, tested, and green.** CI on `main`
+  (2026-09-18): pytest + `dbt build --target ci` + Playwright all pass.
+- **Both capstones shipped** (ops layer; "make it real" multi-asset holdings), plus the
+  LLM briefing (PRs #5–#7), the immersive web tour (#8), and Daily Note phase ① (#9).
+- **Landed 2026-09-18:** private daily ops (#10), Dagster+ Serverless deployment (#12),
+  and a web-test fix (#11). All three are *code-complete but not yet operating* — see
+  the next section.
 
-**Repo layout (2026-06-16):** the dbt project lives in `transformation/` (moved out of the
-repo root); `ingestion/`, `app/`, `orchestration/` are siblings. **dbt engine:** local work
-+ Dagster + the dbt-MCP use **dbt-fusion** (run from *inside* transformation/ — the
-Makefile/Dagster cd in; fusion's `--project-dir` mishandles seed paths); **CI uses dbt-core
-1.11** on its own isolated runner. dbt-core and dbt-fusion can't share
-`transformation/dbt_packages/`, so keep one engine locally (fusion).
+## Operator steps still owed (user-owned)
 
-Gold marts (all in `transformation/models/marts/`):
-- **Macro:** `macro_indicators` (cards), `macro_trend` (sparklines), `macro_regime` (regime banner)
-- **Sector:** `sector_performance` (+ `int_sector_rate_comovement`) — all 11 SPDR sectors
-- **Holdings:** `portfolio_composition` (sizing: weight, value, gain, valuation source),
-  `holdings_benchmarks` (asset-class-routed, up to 5 axes — the load-bearing one)
-- **Shared:** `ticker_trend`, `int_ticker_returns`, `int_macro_indicators`,
-  `int_holdings_classified`, `int_benchmark_routing`
+1. **Reinstall the private LaunchAgents from `~/Programming`.** The installed agents
+   still run the pre-fix code out of a worktree at `~/Desktop/Programming/Personal/Anchor`
+   (iCloud-synced — violates the repo-location rule) on the old schedule: **18:30 ET,
+   Tue–Sat**. That schedule raced mutual-fund NAVs and failed ~13 of 18 runs; last
+   private success was 2026-08-29. Fix: `make bootstrap-private && make
+   install-private-services` from this checkout, confirm with `make private-status`,
+   then `git worktree remove` the Desktop one (its `var/` holds only logs + status).
+2. **Activate Dagster+ Serverless** per `docs/dagster_serverless_operations.md`. The
+   deploy workflow is dormant until repo variable `DAGSTER_CLOUD_ORGANIZATION` (+ secret
+   `DAGSTER_CLOUD_API_TOKEN`) is set — runbook step 1.
+3. **Vercel connect for `web/`** + the public-URL swap.
 
-Bronze→silver is live and freshly refreshed as of 2026-07-09 (FRED 4 series; yfinance's
-~44-ticker *derived* universe — held tickers ∪ all benchmark ETFs — replaces the old
-fixed 14; `raw_holdings` added for demo + real positions). `dbt source freshness --target
-prod` passes after refresh.
+## What's next (README roadmap order)
 
-**Dev / prod datasets.** Models route via
-`transformation/macros/generate_schema_name.sql`: plain `dbt build` collapses into the personal
-sandbox `dbt_timurakhtemov` (which still holds orphaned dbt-tutorial tables — harmless,
-not the serve source); `dbt build --target prod` materializes the named contract
-`anchor_staging` / `anchor_intermediate` / `anchor_marts` / `anchor_seeds`; the ticker
-metadata dbt snapshot writes to `anchor_snapshots` in prod. **The dashboard reads
-`anchor_marts`.** A `prod` target was added to `~/.dbt/profiles.yml`
-(dataset `anchor`, same SA key).
+1. Unattended post-close operation — built; blocked only on operator step 2.
+2. Reliable settled EOD data — `docs/ingestion_roadmap.md`, still deferred.
+3. Grounded portfolio history — allocation drift, concentration, contribution.
+4. **Daily Note phase ② — derived-signal marts** (`portfolio_rate_sensitivity`,
+   `holding_attribution`, concentration signals). The next dbt-heavy build; design is
+   locked in `docs/briefing_daily_note_design.md`. Phases ③–⑤ follow it.
+5. Intent and reflection tools.
 
-**Serve layer — `app/`.** Single top-down page (macro → sectors →
-holdings), live from `anchor_marts`. `app/data.py` is the data seam (cached `_read()`
-choke point + a `SOURCE` switch for the future snapshot path — no UI knows the source);
-`app/ui.py` is the shared visual vocabulary; `.streamlit/config.toml` is the teal theme.
-Run with `streamlit run app/app.py` (needs `GOOGLE_APPLICATION_CREDENTIALS`). Gotcha:
-restarting the streamlit server drops open browser tabs' connections — hard-refresh
-(Cmd+Shift+R) after a restart or the page renders stale/half-scrolled.
+Scope decision still in force: the briefing stays **local (Ollama)** until public
+deployment; the `AnthropicProvider` is dormant-but-ready and structurally demo-only.
 
-## DONE — public deploy
+## Lessons from the 2026-09-18 landing (each cost a red build)
 
-**Live: https://anchor-dashboard.streamlit.app** (Streamlit Community Cloud, public
-repo, deploys from `main`, entrypoint `app/app.py`). Serves the committed parquet
-snapshot (`app/snapshot/*.parquet`) — no GCP creds. `app/data.py` auto-detects source
-(bigquery local / snapshot cloud); `app/export_snapshot.py` regenerates the snapshot
-(run it + push to refresh the live demo). See the `reference-live-deploy` memory.
+- **The settle cutoff is 21:30 ET, not 18:30.** At 18:30 ETFs carry the session's bar
+  while mutual funds (FXAIX, FXNAX) don't, so funds are null-priced at the common as-of
+  date and `assert_source_valuation_is_intentional` +
+  `not_null_holdings_benchmarks_relative_1m_pp` fail — correctly. One constant,
+  `SESSION_SETTLED_ET` in `ingestion/ingest_yfinance.py`; the LaunchAgent and the Dagster
+  cron must match it. Before the cutoff, ingestion drops today's bars, so a daytime
+  `make ingest` is safe and yields yesterday's settled session.
+- **launchd `Weekday` is 0/7 = Sunday, 1 = Monday.** `range(2, 7)` was Tue–Sat, and the
+  test pinned the same mistake.
+- **Pin on frozen fixtures, assert invariants on live data.** `web/tests/resolve.spec.ts`
+  pinned exact expectations against the committed bundle, whose briefing is
+  LLM-generated; every refresh broke CI. Exact pins now use
+  `web/tests/fixtures/anchor-2026-07.json`.
+- **CI builds share one `dbt_ci` dataset.** Concurrent runs double-load seeds and fail
+  `unique` tests spuriously; the build job now has a cross-ref concurrency group.
 
-## DONE — dbt docs / lineage
+## Honest deviations from the locked designs
 
-**Live: https://timurakhtemov.github.io/Anchor/** (GitHub Pages, published by
-`.github/workflows/docs.yml`). v1 is secret-free: serves the committed self-contained
-static site `site/index.html` (`dbt docs generate --static --project-dir transformation
---target prod`). Refresh = regenerate, copy `transformation/target/static_index.html` →
-`site/index.html`, push. Pages source is
-set to "GitHub Actions". (Action versions bumped to Node-24 runtimes 2026-06-16:
-checkout@v6, setup-python@v6, configure-pages@v6, upload-pages-artifact@v5, deploy-pages@v5.)
+From `docs/make_it_real_design.md`:
+- **SnapTrade became the primary real-data transport** before a real Fidelity export
+  ever went through the CSV parser — the CSV real-path is unverified against export drift.
+- **Commodity + alt classes were added mid-build** (the real portfolio had both); they
+  forced the explicit `valuation_source` split and are display-only in v1.
+- **The common as-of calendar is anchored to the benchmark-ETF set**, not the full
+  priced universe, so one holding's oddball bar can't move the date for everyone.
+- **Classification is an override table, not a pure derivation** — no metadata source
+  can classify what a fund holds inside.
 
-## DONE — CI
+## Gotchas
 
-**`.github/workflows/ci.yml`** builds + tests on every PR/push to main: `dbt build
---target ci` compiles all models, builds into the isolated `dbt_ci` dataset, runs all
-data tests (118 as of 2026-07-09) plus model builds/seeds/snapshots. Auth via the
-**`BQ_SA_KEY`** repo secret (the existing SA key — set this session). `ci/profiles.yml`
-defines the `ci` target. A guard job skips the build (run stays green) if the secret is
-ever absent. Locally verified green on 2026-07-01: `make refresh` got ingestion + dbt
-build to 93/93 (then 140/140 after the make-it-real capstone — see below), then snapshot
-export was rerun with `GOOGLE_APPLICATION_CREDENTIALS=~/.dbt/anchor-bigquery-key.json`
-because `app/export_snapshot.py` expects ADC when invoked directly.
-Keyless upgrade (Workload Identity Federation) is a ~5-line workflow swap, noted in the
-workflow header.
+- **dbt-fusion locally, dbt-core in CI.** Run fusion from *inside* `transformation/`
+  (`--project-dir` mishandles seed paths). The two engines can't share
+  `transformation/dbt_packages/` — keep one engine locally. Fusion's deferral-manifest
+  404 and package warnings are harmless.
+- **dagster-dbt crashes on fusion's hook nodes** (null `config` on `on-run-start`
+  operations); `orchestration/anchor_orchestration/resources.py` strips them from
+  Dagster's parsed manifest copy. The Serverless build-time manifest uses dbt-core and
+  `orchestration/prepare_manifest.py`.
+- **`stg_yfinance__prices` is an incremental merge and never deletes.** If a partial bar
+  ever lands, it won't self-heal: `dbt build --select stg_yfinance__prices
+  --full-refresh`.
+- **Ingestion modes:** FRED/yfinance are `WRITE_TRUNCATE` full refreshes; holdings are
+  `WRITE_APPEND` (banks `as_of` history by design).
+- **The private refresh log can contain the FRED API key** (a failed request's URL is
+  logged verbatim). It stays in gitignored `var/`, but the log sanitizer covers only
+  SnapTrade SDK errors today.
+- **Streamlit:** restarting the server drops open tabs' connections — hard-refresh.
+- The `dbt_timurakhtemov` dev sandbox still holds orphaned dbt-tutorial tables; harmless.
 
-## DONE — dbt-depth pass
+## Design records in `docs/`
 
-Completed and pushed 2026-07-01 (`feat(dbt): add depth pass and refresh snapshots`).
-
-- **Incremental price staging.** `stg_yfinance__prices` is now an incremental BigQuery
-  merge table keyed on `(ticker, trading_date)`, partitioned by `trading_date`, clustered
-  by `ticker`, and reloading the latest 7 days to absorb yfinance corrections/trailing-bar
-  finalization.
-- **SCD2 ticker metadata snapshot.** `snap_yfinance_tickers` tracks changes in company
-  name, sector, industry, market cap, exchange, and currency. Prod relation:
-  `anchor_snapshots.snap_yfinance_tickers`; dev/CI use the active target schema.
-- **Freshness contract.** Raw yfinance tables warn/error at 36h/72h; raw FRED tables at
-  7d/14d. `dbt source freshness --target prod` passes after the 2026-07-01 refresh.
-- **Exposures.** dbt lineage includes the Streamlit dashboard and parquet snapshot export
-  downstream of the served marts (`portfolio_composition` added with the make-it-real
-  capstone — see below).
-- **Model contract.** `holdings_benchmarks` has an enforced column/type contract while
-  preserving its existing grain, relationship, accepted-value, and guardrail tests.
-
-## DONE — Dagster orchestration (dagster-dbt)
-
-**The whole pipeline is now one Dagster asset graph** (`orchestration/`, run locally with
-`make dagster` → UI at localhost:3000). Built + verified end-to-end this session. See
-`orchestration/README.md` for the design write-up.
-
-- **Bronze ingestion as assets.** `ingest_fred` / `ingest_yfinance` are `@multi_asset`s,
-  each yielding two nodes (the four `raw_*` tables). The ingestion scripts got a thin
-  refactor — an importable `ingest_*(client)` that returns row counts and raises instead
-  of `sys.exit`; the `main()` CLI is preserved so `make ingest` / CI are unchanged.
-- **dbt models as assets, fused onto bronze.** `@dbt_assets` auto-loads every model +
-  seed in the manifest; an `AnchorDbtTranslator` maps each dbt `source()` onto the bronze
-  asset keys, so the graph is **continuous** bronze → silver (staging/intermediate) →
-  gold (marts) — the cross-boundary lineage plain dbt docs can't show. Models grouped by
-  layer; `dbt build` runs on `--target prod`; all tests surface as asset checks.
-- **Snapshot as the terminal asset.** `snapshot_parquet`, downstream of the served marts,
-  runs `export_snapshot` (same thin-refactor treatment) → `app/snapshot/*.parquet`.
-- **`holdings_demo` (added with the make-it-real capstone).** A single `@asset` upstream
-  of `ingest_yfinance` (the ticker universe is derived from held tickers, so holdings
-  must land first) that loads the committed sample portfolio. Real/SnapTrade pulls are
-  deliberately manual and local — the scheduled public graph never touches real data.
-- **Fusion/dagster-dbt manifest gotcha (found + fixed this session).** dagster-dbt's
-  asset-graph construction walks the manifest through dbt-core's `NodeSelector`, which
-  unconditionally reads `node.config.enabled` — but dbt-fusion never populates `config`
-  on `on-run-start`/`on-run-end` hook ("operation") nodes (the privacy-interlock hook
-  added with `prod-private`), so loading `Definitions` crashed with an `AttributeError`.
-  Hooks aren't `ref()`-able resources Dagster needs to model as assets, so
-  `resources.py` now strips operation nodes from its copy of the parsed manifest right
-  after `prepare_if_dev()` — a few lines, doesn't touch how dbt itself builds, and the
-  manifest is a gitignored build artifact so nothing this touches is committed.
-- **Schedule.** `daily_refresh` — weekday 21:30-ET post-close over the whole graph,
-  **stopped by default** (toggle in the UI).
-- **One auth seam.** A `BigQueryResource` injects the client into every Python asset
-  (local ADC → keyfile; cloud → `gcp_credentials` secret), unifying the auth the
-  ingestion + snapshot scripts each wired up separately.
-- **Verified:** full graph materializes through Dagster in dependency order —
-  ingest_fred + ingest_yfinance (parallel) → dbt build → snapshot, RUN_SUCCESS (~1m35s).
-  Payoff lineage screenshot captured (`docs/images/dagster-lineage.png`, local — PNGs are gitignored).
-
-**Why in-process assets (not subprocess):** future-proofs the roadmap — new sources
-(SnapTrade holdings) reuse the resource; partitioned/incremental loads pass config into
-the functions; data-quality checks emit from the returned counts; cloud deploy swaps
-resource config, not code. Decision made Socratically this session.
-
-**Env to run:** `make dagster` sets `GOOGLE_APPLICATION_CREDENTIALS`, `DBT_PROFILES_DIR`
-(~/.dbt — where the `prod` target lives), `DAGSTER_HOME` (gitignored), and
-`PYTHONPATH=orchestration`. `prepare_if_dev()` regenerates the dbt manifest under
-`dagster dev` so the asset graph never drifts.
-
-## DONE — make-it-real capstone (dynamic holdings + multi-asset benchmarking)
-
-**The static 6-stock watchlist is retired.** Real portfolio holdings — ingested
-dynamically, sized by actual position weights, benchmarked per asset class — now drive
-the holdings tier. Locked design: `docs/make_it_real_design.md`. Built across 8 commit
-groups (loader → yfinance universe → staging/classification → gold rework → privacy
-plumbing → serve layer → SnapTrade → this ops pass); see `git log` for the full trail.
-
-**What shipped:**
-- **One holdings loader, two transports, one schema** (`ingestion/ingest_holdings.py`):
-  `--from-csv` parses a Fidelity positions export (the committed `data/sample_portfolio.csv`
-  is in the same format); `--from-snaptrade` pulls live positions via the SnapTrade SDK
-  (read-only, Fidelity GA, free personal tier). Both funnel into the same
-  `raw_holdings.holdings_<demo|real>` schema, `WRITE_APPEND` with an `as_of` batch date
-  (banks position history from day one for a future portfolio-over-time UI).
-- **Asset-class-aware benchmark routing (5 classes × 5 axes).** `int_holdings_classified`
-  + `int_benchmark_routing` route equities to sector + cap-style, equity funds to market,
-  fixed income to bond-market + duration, and leave commodity/alt with zero axes
-  (display-only, guardrail-tested) — one generic `benchmark_type` model, no per-class
-  special-casing in the mart itself.
-- **Dual-source valuation.** `valuation_source` (`market` vs `source`) is explicit:
-  `quantity × latest_close` when a public price exists, the import's own value when it
-  doesn't (cash NAV, plan-internal instruments like an employer-plan target-date fund).
-  A guardrail test (`assert_source_valuation_is_intentional`) fails the build if any
-  *normal* instrument (not cash/alt) is ever source-valued — a transiently unpriced
-  holding must fail loudly, not silently go stale.
-- **`portfolio_composition`** — the sizing mart: one row per held ticker including cash
-  and roots (weight, market value, cost basis, unrealized gain, `is_root`).
-- **Structural demo/private isolation.** A `prod-private` dbt target (`anchor_*_private`
-  datasets) + a `holdings_source` var (`demo` default) + a compile-time `on-run-start`
-  hook (`assert_portfolio_isolation`) that fails the build if `holdings_source: real` is
-  ever combined with a public target. The public deploy cannot see real data even by
-  mistake — verified by building `prod-private --vars '{holdings_source: real}'` locally
-  green, and `prod`/`ci` refusing the same vars.
-- **Composition-driven app.** The holdings tier iterates `portfolio_composition` grouped
-  by asset class, attaches `holdings_benchmarks` rows by ticker, and shows an allocation
-  bar. Roots get a "market root" badge; holdings with zero benchmark axes (commodity,
-  alt) render an explicit "not benchmarked" line instead of blank space.
-
-**How to run it:**
-```bash
-make ingest-holdings-demo && python ingestion/ingest_yfinance.py && cd transformation && dbt build
-# real (local only, never in a public target):
-make ingest-holdings-real && make build-private
-# or connect live once, then re-pull anytime:
-python ingestion/snaptrade_connect.py
-python ingestion/ingest_holdings.py --from-snaptrade --portfolio real
-```
-Private inputs (never committed): `data/private/fidelity_positions.csv` +
-`data/private/fund_classifications_real.csv`, both gitignored; SnapTrade secrets live in
-`.env` (also gitignored).
-
-**EOD ingestion + incremental staging (operational note).** `ingest_yfinance.py` drops
-any in-progress session bars before 21:30 ET — the common as-of calendar (anchored to the
-benchmark ETF set) must never advance onto a partial trading day. Sharp edge:
-`stg_yfinance__prices` is an incremental BigQuery merge, and merges never delete rows
-removed upstream — so if a partial bar ever does land there (a stale run, a manual
-override), the model won't self-heal on the next normal run. The symptom shows up
-downstream, not at ingestion: a benchmark ETF's `as_of_date` advances past what other
-tickers have a complete close for, pushing some holdings to `valuation_source = 'source'`
-and tripping `assert_source_valuation_is_intentional` (equity/fixed_income should never be
-source-valued). The remediation is a one-time
-`dbt build --select stg_yfinance__prices --full-refresh` to purge the stale rows and
-rebuild the incremental table clean.
-
-**Honest deviations from the locked design** (the point of surfacing them — see
-`docs/make_it_real_design.md` for the original spec):
-- **SnapTrade became the primary real-data transport.** The CSV path was sequenced first
-  to prove the models, per the design's own risk-control call — but SnapTrade shipped and
-  became primary use before a real Fidelity export was ever run through the CSV parser.
-  It's validated only against the committed sample file's format; treat the CSV real-path
-  as unverified against actual export drift.
-- **Commodity + alt asset classes were added mid-build**, beyond the locked design's four
-  (stocks, equity funds, bond funds, cash) — the real portfolio contained both. They
-  required the explicit `valuation_source` split (source-valued = cash NAV + plan-internal
-  instruments) and are intentionally unbenchmarked in v1 (display-only).
-- **The common as-of calendar is anchored to the benchmark ETF set**, not the full priced
-  universe — a holding's oddball bar (e.g. a fund NAV stamped ahead of the market's last
-  complete close) must not move the as-of date for everyone else.
-- **Classification is an override table, not a pure derivation** — human classification
-  (the fund seed / private CSV) wins over `quote_type`-derived fallback whenever both
-  exist, since no metadata source can classify what a fund holds inside.
-
-**Verified:** `dbt build` green in both worlds (140/140 demo; real-world spot-check green
-too); app checked in both demo and real mode; snapshot re-exported and inspected —
-demo-tickers-only, now enforced by a dedicated pytest assertion against the exported
-parquet files (`tests/app/test_snapshot_privacy.py`). CI triggers only on PRs and pushes
-to `main` — not on pushes to this feature branch — so the dbt-core build gates this
-branch at the PR, and hasn't actually been observed green against it yet.
-
-## Recommended next session (decided 2026-06-16) — a dbt-depth pass
-
-_Historical — this pass shipped 2026-07-01 (see "DONE — dbt-depth pass" above); kept
-below for the record._
-
-Goal: make the project more impressive *on the dbt side*. Highest-ROI, and most needs no
-new data — these are senior-dbt patterns currently missing:
-- **Incremental model** — prices grow daily; textbook `is_incremental()` + `unique_key`.
-- **Snapshot (SCD2)** — `transformation/snapshots/` is empty (just `.gitkeep`); snapshot
-  ticker `sector` / `market_cap` over time.
-- **Exposures** — declare the Streamlit dashboard + the snapshot as consumers so lineage
-  shows model → dashboard.
-- **Source freshness** — `loaded_at` thresholds on the FRED/yfinance sources (designed in
-  `docs/ingestion_roadmap.md`).
-- **Model contract** — enforce column types/constraints on `holdings_benchmarks` (the
-  load-bearing mart).
-
-Why this first: Serverless (below) is ops/hosting — zero dbt. Multi-asset is the deeper
-modeling lift but coupled to holdings ingestion (plumbing). The dbt-depth pass is fast,
-high-signal, and independent. **Sequence: dbt-depth → multi-asset (make-it-real) →
-Serverless (deploy last, so the live schedule showcases the fuller graph).**
-
-## Later — Dagster+ Serverless (unattended schedule)
-
-Local `dagster dev` gives the asset-graph artifact but doesn't run unattended (laptop).
-**Dagster+ Serverless** (free tier, same code) is the live scheduled story. Needs: a
-build-time manifest (`dagster-dbt project prepare-and-package`, since `prepare_if_dev`
-only fires locally) and the `gcp_credentials` secret wired to the `BigQueryResource`. The
-`git push` that refreshes the live Streamlit demo from the new snapshot stays a separate
-step (Dagster materializes the parquet, not the commit). Secrets `BQ_SA_KEY` +
-`FRED_API_KEY` remain set.
-
-**Fusion gotchas (local engine = dbt-fusion 2.0 preview at `~/.local/bin/dbt`):**
-(1) Run it from *inside* `transformation/` — its `--project-dir` flag mishandles seed file
-paths, so the `benchmark_etfs` seed fails from the repo root (the Makefile `cd`s in; Dagster
-runs dbt from the project dir; the dbt-MCP sets `DBT_PROJECT_DIR`). (2) dbt-core and
-dbt-fusion **cannot share `transformation/dbt_packages/`** — each re-creates `pkg 2`/`pkg 3`
-dirs and breaks the other, so everything LOCAL is fusion and CI is core on its own runner.
-(3) harmless deferral-manifest 404 warning. `make build-prod` (fusion) = 140/140 green.
-(4) dagster-dbt's manifest reader crashes on dbt-fusion's null `config` for hook
-("operation") nodes — worked around in `orchestration/anchor_orchestration/resources.py`
-by stripping those nodes from Dagster's parsed copy of the manifest (see the "make-it-real
-capstone" section above); a build-time manifest for Serverless will need the same
-treatment if `dagster-dbt project prepare-and-package` hits the same node type.
-Optional later polish: SQLFluff lint folded into CI.
-
-## Strategic direction (agreed) — two capstones make it "a living data product"
-
-The dbt+dashboard is functionally complete but reads as *modeling-only*; the value is
-turning it into a running product. After Streamlit:
-
-1. **Ops capstone:** ✅ live deploy (Streamlit Cloud) · ✅ dbt docs/lineage (Pages) ·
-   ✅ CI on PRs (`dbt build`, GHA) · ✅ **orchestration = Dagster asset graph** (local
-   `dagster dev`, now including the `holdings_demo` bronze asset) · next: Dagster+
-   Serverless (unattended run) · later: data-quality (Elementary), SQLFluff lint.
-2. **"Make it real" capstone:** ✅ **shipped 2026-07-09.** Dynamic holdings (SnapTrade
-   live + Fidelity CSV) → asset-class-aware multi-asset benchmarking (5 classes × 5
-   axes) → `portfolio_composition` sizing → structural demo/private isolation →
-   composition-driven app. See "DONE — make-it-real capstone" above.
-
-**Both capstones are now shipped.** The only remaining ops item is Dagster+ Serverless
-(unattended schedule, same code) — everything else on both lists is built, tested, and
-live.
-
-## Roadmap docs
-
-- `docs/make_it_real_design.md` — **built** (2026-07-09), see "DONE — make-it-real
-  capstone" above. The locked build spec; kept as the design record + honest-deviation
-  reference.
-- `docs/holdings_ingestion.md`, `docs/multi_asset_benchmarking.md` — **superseded** by
-  `make_it_real_design.md` (their open decisions are resolved there); kept as design
-  history only.
-- `docs/ingestion_roadmap.md` — **still deferred.** Price-data freshness/source strategy:
-  EOD API for the nightly post-close increment, incremental loading beyond prices.
-  (Source-freshness tests already shipped in the dbt-depth pass.)
-
-## Open items / things to watch
-
-- **Caveats are catalogued in the README "Limitations" section** — don't re-derive them.
-  Key live ones: quantities are as-of the last import (prices are daily, so value mixes
-  fresh + stale between pulls), the CSV real-import path is unvalidated against an actual
-  Fidelity export, alt instruments are display-only (no v1 benchmark axis), duration
-  buckets are hand-assigned, CPI lag in the regime, co-movement is descriptive/noisy,
-  yfinance freshness, namespace-scoped ticker key.
-- **yfinance trailing-bar gotcha is handled** (models filter null-OHLC bars), but it
-  recurs each pull — the durable fix lives in `docs/ingestion_roadmap.md`.
-- Ingestion is `WRITE_TRUNCATE` full-refresh for FRED/yfinance; holdings is `WRITE_APPEND`
-  (banks history by design). Incremental yfinance loading beyond prices is future work.
-- `dbt-fusion 2.0 preview` emits harmless warnings (deferral manifest 404, package
-  project-file warnings); not errors. It also never populates `config` on hook nodes —
-  harmless for `dbt build` itself, but see the Dagster manifest workaround above if you
-  touch `orchestration/anchor_orchestration/resources.py`.
-
-## How to work on this project
-
-See `CLAUDE.md` "Working style": Socratic (surface decisions, user decides), verify
-against real data before baking values in, explain the "why" concisely, honest about
-caveats, move fast on boilerplate. The user is learning AE as we build and holds the
-wheel on design calls.
+`make_it_real_design.md` (built) · `briefing_daily_note_design.md` (active arc) ·
+`immersive_briefing_design.md`, `llm_copilot_briefing_design.md` (built) ·
+`ingestion_roadmap.md` (deferred) · `holdings_ingestion.md`,
+`multi_asset_benchmarking.md` (superseded, history only) ·
+`private_daily_operations.md`, `dagster_serverless_operations.md` (runbooks).
