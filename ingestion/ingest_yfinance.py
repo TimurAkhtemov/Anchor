@@ -19,6 +19,9 @@ load_dotenv()
 
 PROJECT_ID = "anchor-495115"
 DATASET_ID = "raw_yfinance"
+# (hour, minute) ET after which today's session counts as settled. The private
+# LaunchAgent and the Dagster schedule both run at this time; keep them in step.
+SESSION_SETTLED_ET = (21, 30)
 KEYFILE_PATH = "/Users/timurakhtemov/.dbt/anchor-bigquery-key.json"
 
 _SEED_PATH = Path(__file__).parent.parent / "transformation" / "seeds" / "benchmark_etfs.csv"
@@ -179,16 +182,19 @@ def ingest_yfinance(bq_client) -> dict:
     df_prices['ingested_at'] = pd.to_datetime(df_prices['ingested_at'])
 
     # EOD product: a trading session's bars are only trustworthy once the session
-    # has settled (equity closes final at 16:00 ET; mutual-fund NAVs post ~18:00).
-    # Ingesting mid-session would advance the common as-of calendar onto a partial
-    # day that funds can't have yet — so before 18:30 ET, today's bars are dropped.
+    # has settled (equity closes final at 16:00 ET; mutual-fund NAVs reach Yahoo
+    # later and less predictably — an 18:30 cutoff was observed racing them: ETFs
+    # had the session's bar while FXAIX/FXNAX did not, which null-prices the funds
+    # at the common as-of date and trips the valuation guardrails downstream).
+    # Ingesting before then would advance the common as-of calendar onto a day
+    # that funds can't have yet — so before the cutoff, today's bars are dropped.
     now_et = datetime.now(ZoneInfo("America/New_York"))
-    if (now_et.hour, now_et.minute) < (18, 30):
+    if (now_et.hour, now_et.minute) < SESSION_SETTLED_ET:
         before = len(df_prices)
         df_prices = df_prices[df_prices["date"] < now_et.date()]
         logger.info(
             f"Dropped {before - len(df_prices)} in-progress session bars dated {now_et.date()} "
-            "(session not settled until 18:30 ET)"
+            f"(session not settled until {SESSION_SETTLED_ET[0]}:{SESSION_SETTLED_ET[1]:02d} ET)"
         )
 
     # Define Explicit Schemas
