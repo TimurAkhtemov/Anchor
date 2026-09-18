@@ -31,8 +31,10 @@ The `make dagster` target sets the env this needs:
 | `DAGSTER_HOME` | persistent run history (`orchestration/.dagster_home`, gitignored) |
 | `PYTHONPATH=orchestration` | makes the `anchor_orchestration` package importable |
 
-The daily schedule (`daily_refresh`, weekday 18:30 ET post-close) is **stopped by
-default** — toggle it on in the UI. v1 runs locally; it does not run unattended.
+The daily schedule (`daily_refresh`, weekday 21:30 ET post-close) remains stopped
+locally and in branch deployments. It defaults to running only when Dagster+
+identifies the deployment as `prod`. Its selection is an explicit list of demo
+assets; adding a future private asset cannot silently add it to this schedule.
 
 ## Layout
 
@@ -64,14 +66,18 @@ default** — toggle it on in the UI. v1 runs locally; it does not run unattende
   (`dbt parse --target prod`) under `dagster dev`, so the asset graph always matches the
   dbt project.
 
-## Follow-up: Dagster+ Serverless
+## Dagster+ Serverless
 
-Local `dagster dev` gives the asset graph but doesn't run unattended. Dagster+ Serverless
-(free tier, same code) is the live scheduled story. It needs a **build-time** manifest
-(`dagster-dbt project prepare-and-package`, since `prepare_if_dev` only fires locally) and
-the `gcp_credentials` secret wired to the `BigQueryResource`. The `git push` that refreshes
-the live Streamlit demo from the new snapshot stays a separate step — Dagster materializes
-the parquet, not the commit.
+Serverless deployment files are committed but activation is an operator step; see
+`docs/dagster_serverless_operations.md`. CI parses and sanitizes the dbt manifest
+before building the PEX. Runtime dbt uses the repository-owned public-only profile
+and service-account JSON supplied by Dagster+.
+
+The terminal graph is `snapshot_parquet -> publish_snapshot`. Export happens in a
+temporary directory, passes completeness/privacy/freshness validation, and only then
+replaces the runtime snapshot. Production publication uses GitHub's Git Data API to
+create one non-forced commit from the current `main` head. Local and branch runs never
+publish.
 
 > The `dbt` executable on PATH is `dbt-fusion 2.0 preview`; it parses/builds fine on the
 > `prod` target and emits a harmless deferral-manifest 404 warning.

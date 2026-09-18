@@ -1,0 +1,10 @@
+anchor:
+  target: prod
+  outputs:
+    prod:
+      type: bigquery
+      method: oauth
+      project: anchor-495115
+      dataset: anchor
+      threads: 4
+      location: US

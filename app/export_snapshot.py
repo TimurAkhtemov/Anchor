@@ -15,6 +15,8 @@ of the marts: ingest -> dbt build --target prod -> export_snapshot -> git push.
 
 from __future__ import annotations
 
+import shutil
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -43,11 +45,14 @@ TABLES = [
 ]
 
 
-def export_snapshot(client: bigquery.Client) -> dict[str, int]:
+def export_snapshot(
+    client: bigquery.Client,
+    destination_dir: Path = SNAPSHOT_DIR,
+) -> dict[str, int]:
     """Read each prod mart and write it to app/snapshot/<table>.parquet, returning
     {table: row_count}. Takes an injected client so the standalone CLI and the
     Dagster snapshot asset share one implementation."""
-    SNAPSHOT_DIR.mkdir(exist_ok=True)
+    destination_dir.mkdir(parents=True, exist_ok=True)
     counts: dict[str, int] = {}
     for table in TABLES:
         df = client.query(f"select * from `{PROJECT}.{MARTS_DATASET}.{table}`").to_dataframe()
@@ -58,9 +63,32 @@ def export_snapshot(client: bigquery.Client) -> dict[str, int]:
         for col in df.columns:
             if str(df[col].dtype) in ("dbdate", "dbtime"):
                 df[col] = pd.to_datetime(df[col])
-        out = SNAPSHOT_DIR / f"{table}.parquet"
+        out = destination_dir / f"{table}.parquet"
         df.to_parquet(out, index=False)
         counts[table] = len(df)
+    return counts
+
+
+def promote_snapshot(source_dir: Path, destination_dir: Path = SNAPSHOT_DIR) -> None:
+    """Replace the served parquet set only after all files validate."""
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    for table in TABLES:
+        source = source_dir / f"{table}.parquet"
+        destination = destination_dir / source.name
+        temporary = destination.with_suffix(".parquet.next")
+        shutil.copy2(source, temporary)
+        temporary.replace(destination)
+
+
+def export_snapshot_transactionally(client: bigquery.Client) -> dict[str, int]:
+    """Standalone export helper that never leaves a partially refreshed set."""
+    from app.snapshot_validation import validate_snapshot
+
+    with tempfile.TemporaryDirectory(prefix="anchor-snapshot-") as temporary:
+        staging_dir = Path(temporary)
+        counts = export_snapshot(client, destination_dir=staging_dir)
+        validate_snapshot(staging_dir)
+        promote_snapshot(staging_dir)
     return counts
 
 
@@ -68,7 +96,7 @@ def main() -> None:
     from google.cloud import bigquery
 
     client = bigquery.Client(project=PROJECT)
-    counts = export_snapshot(client)
+    counts = export_snapshot_transactionally(client)
     for table, n in counts.items():
         print(f"  {table:22s} {n:>5} rows -> app/snapshot/{table}.parquet")
     print(f"Snapshot written to {SNAPSHOT_DIR}")

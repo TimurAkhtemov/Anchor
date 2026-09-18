@@ -4,3 +4,9 @@ dagster==1.13.8
 dagster-dbt==0.29.8
 dagster-gcp==0.29.8
 dagster-webserver==1.13.8
+dbt-bigquery~=1.11.0
+pandas>=2.2
+pyarrow>=17
+requests>=2.32
+python-dotenv>=1.0
+yfinance>=0.2

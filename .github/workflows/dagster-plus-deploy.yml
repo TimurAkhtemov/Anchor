@@ -1,0 +1,95 @@
+name: Dagster+ Serverless Deployment
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "app/snapshot/**"
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+concurrency:
+  group: ${{ github.ref }}/dagster-deploy
+  cancel-in-progress: true
+
+env:
+  DAGSTER_CLOUD_API_TOKEN: ${{ secrets.DAGSTER_CLOUD_API_TOKEN }}
+  DAGSTER_CLOUD_ORGANIZATION: ${{ vars.DAGSTER_CLOUD_ORGANIZATION }}
+  DAGSTER_CLOUD_YAML_PATH: "."
+  DAGSTER_CLOUD_FILE: "dagster_cloud.yaml"
+  ENABLE_FAST_DEPLOYS: "true"
+  PYTHON_VERSION: "3.12"
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  deploy:
+    name: Dagster Serverless Deploy
+    # Dormant until the operator activates Dagster+ (runbook step 1 sets this
+    # variable); skipped rather than red on every PR and push before then.
+    if: vars.DAGSTER_CLOUD_ORGANIZATION != ''
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Prerun checks
+        id: prerun
+        uses: dagster-io/dagster-cloud-action/actions/utils/prerun@v1.11.9
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Set up target Python
+        id: setup-python
+        if: steps.prerun.outputs.result == 'pex-deploy'
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Prepare build-time dbt manifest
+        if: steps.prerun.outputs.result == 'pex-deploy'
+        env:
+          ANCHOR_MANIFEST_PROFILES_DIR: orchestration/dbt_profiles_build
+        run: |
+          python -m pip install setuptools "dbt-bigquery~=1.11.0"
+          dbt deps --project-dir transformation
+          python orchestration/prepare_manifest.py
+
+      - name: Validate configuration
+        id: validate
+        if: steps.prerun.outputs.result != 'skip'
+        uses: dagster-io/dagster-cloud-action/actions/utils/dagster-cloud-cli@v1.11.9
+        with:
+          command: "ci check --project-dir . --dagster-cloud-yaml-path dagster_cloud.yaml"
+
+      - name: Initialize build session
+        id: init
+        if: steps.prerun.outputs.result != 'skip'
+        uses: dagster-io/dagster-cloud-action/actions/utils/ci-init@v1.11.9
+        with:
+          project_dir: "."
+          dagster_cloud_yaml_path: "dagster_cloud.yaml"
+          deployment: "prod"
+
+      - name: Build PEX
+        if: steps.prerun.outputs.result == 'pex-deploy'
+        uses: dagster-io/dagster-cloud-action/actions/utils/dagster-cloud-cli@v1.11.9
+        with:
+          command: "ci build --build-strategy=python-executable --python-version 3.12 --pex-deps-cache-from='${{ github.repository }}' --pex-deps-cache-to='${{ github.repository }}'"
+
+      - name: Deploy
+        if: steps.prerun.outputs.result != 'skip'
+        uses: dagster-io/dagster-cloud-action/actions/utils/dagster-cloud-cli@v1.11.9
+        with:
+          command: "ci deploy"
+
+      - name: Update branch deployment comment
+        if: steps.prerun.outputs.result != 'skip'
+        uses: dagster-io/dagster-cloud-action/actions/utils/dagster-cloud-cli@v1.11.9
+        with:
+          command: "ci notify --project-dir=."
+
+      - name: Deployment summary
+        if: steps.prerun.outputs.result != 'skip'
+        uses: dagster-io/dagster-cloud-action/actions/utils/dagster-cloud-cli@v1.11.9
+        with:
+          command: "ci status --output-format=markdown >> $GITHUB_STEP_SUMMARY"

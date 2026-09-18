@@ -154,7 +154,7 @@ Completed and pushed 2026-07-01 (`feat(dbt): add depth pass and refresh snapshot
   `resources.py` now strips operation nodes from its copy of the parsed manifest right
   after `prepare_if_dev()` — a few lines, doesn't touch how dbt itself builds, and the
   manifest is a gitignored build artifact so nothing this touches is committed.
-- **Schedule.** `daily_refresh` — weekday 18:30-ET post-close over the whole graph,
+- **Schedule.** `daily_refresh` — weekday 21:30-ET post-close over the whole graph,
   **stopped by default** (toggle in the UI).
 - **One auth seam.** A `BigQueryResource` injects the client into every Python asset
   (local ADC → keyfile; cloud → `gcp_credentials` secret), unifying the auth the
@@ -226,7 +226,7 @@ Private inputs (never committed): `data/private/fidelity_positions.csv` +
 `.env` (also gitignored).
 
 **EOD ingestion + incremental staging (operational note).** `ingest_yfinance.py` drops
-any in-progress session bars before 18:30 ET — the common as-of calendar (anchored to the
+any in-progress session bars before 21:30 ET — the common as-of calendar (anchored to the
 benchmark ETF set) must never advance onto a partial trading day. Sharp edge:
 `stg_yfinance__prices` is an incremental BigQuery merge, and merges never delete rows
 removed upstream — so if a partial bar ever does land there (a stale run, a manual

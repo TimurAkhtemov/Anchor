@@ -1,0 +1,32 @@
+[project]
+name = "anchor-serverless"
+version = "0.1.0"
+description = "Anchor's Dagster+ Serverless code location."
+requires-python = ">=3.12"
+dynamic = ["dependencies"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = [
+    "app",
+    "data",
+    "ingestion",
+    "orchestration",
+    "orchestration.anchor_orchestration",
+    "transformation",
+]
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["orchestration/requirements.txt"]}
+
+[tool.setuptools.package-data]
+data = ["*.csv"]
+orchestration = ["dbt_profiles/*.yml", "dbt_profiles_build/*.yml"]
+transformation = ["**/*.sql", "**/*.yml", "**/*.csv", "target/manifest.json"]
+
+[tool.dagster]
+module_name = "orchestration.anchor_orchestration"
+code_location_name = "anchor"

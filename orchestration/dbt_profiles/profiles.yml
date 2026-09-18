@@ -1,0 +1,11 @@
+anchor:
+  target: prod
+  outputs:
+    prod:
+      type: bigquery
+      method: service-account-json
+      project: anchor-495115
+      dataset: anchor
+      keyfile_json: "{{ env_var('BQ_SA_KEY') | as_native }}"
+      threads: 4
+      location: US
