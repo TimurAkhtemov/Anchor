@@ -18,7 +18,7 @@ binds only to `127.0.0.1:8501` and reads `anchor_marts_private` directly.
 
 | Service | Behavior |
 |---|---|
-| `com.timurakhtemov.anchor.private-refresh` | Weekdays at 18:30 America/New_York: SnapTrade → FRED/yfinance → private dbt build → local briefing |
+| `com.timurakhtemov.anchor.private-refresh` | Weekdays at 21:30 America/New_York: SnapTrade → FRED/yfinance → private dbt build → local briefing |
 | `com.timurakhtemov.anchor.private-dashboard` | Keeps the real Streamlit dashboard available at <http://127.0.0.1:8501> while the user is logged in |
 
 The refresh uses a non-blocking file lock, so a delayed run cannot overlap the

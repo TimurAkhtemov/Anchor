@@ -15,7 +15,7 @@ Dagster+ and the public deploy. Next = **phase ② derived-signal marts**. Still
 pending, user-owned: Vercel connect for `web/` + the public-URL swap; Dagster+
 Serverless for the unattended **public/demo** run). **Private daily operation shipped
 locally 2026-08-04** on `feat/private-daily-ops`: SnapTrade Personal auth updated to
-the current signed-key contract, weekday 18:30 ET LaunchAgent refresh, localhost-only
+the current signed-key contract, weekday 21:30 ET LaunchAgent refresh, localhost-only
 real dashboard, atomic freshness status, sanitized SDK failures, and a temporary
 `--skip-briefing` switch for local-model conflicts. The first data-only acceptance run
 passed the real `prod-private` build 154/154 with market data as of 2026-08-03. See

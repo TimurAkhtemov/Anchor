@@ -35,7 +35,7 @@ def build_plists(
     env_file: Path,
     private_data_dir: Path,
     *,
-    hour: int = 18,
+    hour: int = 21,
     minute: int = 30,
 ) -> dict[str, dict]:
     env = _environment(repo, env_file, private_data_dir)

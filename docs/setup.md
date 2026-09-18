@@ -71,7 +71,7 @@ once, then `python ingestion/ingest_holdings.py --from-snaptrade --portfolio rea
 (requires the SnapTrade secrets in `.env`).
 
 For daily private use, run `make bootstrap-private`, then `make install-private-services`.
-This installs a weekday 18:30 ET refresh and a localhost-only real dashboard at
+This installs a weekday 21:30 ET refresh and a localhost-only real dashboard at
 <http://127.0.0.1:8501>. `make private-status` shows the last result; append
 `--skip-briefing` to the private runner during a temporary local-model conflict. Full
 operations and privacy contract: `docs/private_daily_operations.md`.
