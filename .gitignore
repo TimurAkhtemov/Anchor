@@ -6,6 +6,7 @@ logs/
 dbt_internal_packages/
 venv/
 .env
+var/
 codegen.sql
 temp_codegen.sql
 

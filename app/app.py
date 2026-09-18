@@ -520,7 +520,7 @@ def render_briefing_fallback(hkey: str) -> None:
 
     briefing.append(
         f"<p style='font-size:0.72rem; color:{ui.SLATE}; margin-bottom:0; margin-top:12px;'>"
-        f"Deterministic briefing (fallback) — LLM briefing unavailable for this refresh.</p>"
+        f"Deterministic summary — computed from the current private marts.</p>"
     )
 
     st.markdown(
@@ -577,6 +577,20 @@ hkey = HORIZONS[horizon]
 with st.sidebar:
     st.title("⚓ Anchor Copilot")
     st.caption("AI-powered portfolio analyst & market context guide.")
+    private_status = data.private_pipeline_status()
+    if private_status:
+        state = private_status.get("state", "unknown")
+        if state == "success":
+            st.success(
+                f"Private refresh complete · market data {private_status.get('data_as_of') or 'date unavailable'}"
+            )
+        elif state == "running":
+            st.info(f"Private refresh running · {private_status.get('step', 'starting')}")
+        else:
+            st.error(
+                f"Private refresh failed · {private_status.get('step', 'unknown step')} · "
+                "showing the last successful data"
+            )
     st.markdown("---")
 
     briefing_row = data.copilot_briefing()

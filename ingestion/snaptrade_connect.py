@@ -2,20 +2,10 @@
 connection portal URL. Timur completes the Fidelity login IN THE BROWSER —
 brokerage credentials never touch this codebase.
 
-Account-type adaptation (discovered live, not assumed from the brief): a
-*personal* SnapTrade API key has no register/userSecret model at all — the
-account already comes with exactly one auto-provisioned user, and calling
-`register_snap_trade_user` for it fails with HTTP 400 ("registerUser is not
-available for personal keys"). Per SnapTrade's docs
-(docs.snaptrade.com/docs/personal-vs-commercial), personal-key holders
-resolve identity from the API key itself and should omit user_id/user_secret
-where possible; this SDK build still requires non-None values client-side,
-but an empty-string secret is accepted and the portal call succeeds. So:
-  - If `list_snap_trade_users()` returns any user, this is a personal key —
-    use that user id, skip registration, store an empty-string secret (kept
-    only so ingest_holdings.py's expected SNAPTRADE_USER_SECRET var exists).
-  - If it returns none, this is a commercial key — fall back to the brief's
-    original register-a-new-user flow (id "anchor-timur").
+Account-type adaptation: a *personal* SnapTrade API key has no
+register/userSecret model. Current Personal authentication resolves identity
+from the signed API key and requires user_id/user_secret to be omitted. A
+commercial key retains the explicit register-user flow.
 
 Security: this script never prints the consumer key or the user secret (nor
 the personal account's resolved user id, since that's an email address). On
@@ -29,7 +19,7 @@ from __future__ import annotations
 import os
 
 from dotenv import find_dotenv, load_dotenv
-from snaptrade_client import SnapTrade
+from snaptrade_client import SnapTrade, SnapTradeAuth
 
 ENV_PATH = find_dotenv(usecwd=True) or ".env"
 load_dotenv(ENV_PATH)
@@ -70,38 +60,40 @@ def _env_has_credentials() -> bool:
 
 
 def main() -> None:
+    client_id = os.environ["SNAPTRADE_CLIENT_ID"]
+    is_personal = client_id.startswith("PERS-")
+    auth_factory = (
+        SnapTradeAuth.personal_api_key if is_personal else SnapTradeAuth.commercial_api_key
+    )
     snaptrade = SnapTrade(
-        client_id=os.environ["SNAPTRADE_CLIENT_ID"],
-        consumer_key=os.environ["SNAPTRADE_CONSUMER_KEY"],
+        auth=auth_factory(
+            client_id=client_id,
+            consumer_key=os.environ["SNAPTRADE_CONSUMER_KEY"],
+        )
     )
 
-    if _env_has_credentials():
+    # Personal client IDs currently use the PERS- prefix. No user fields are
+    # sent; legacy empty user-secret entries in .env are harmless and ignored.
+    if is_personal:
+        login = snaptrade.authentication.login_snap_trade_user()
+        print("personal SnapTrade key detected (user credentials omitted)")
+    elif _env_has_credentials():
         user_id = os.environ["SNAPTRADE_USER_ID"]
-        secret = os.environ.get("SNAPTRADE_USER_SECRET", "")
+        secret = os.environ["SNAPTRADE_USER_SECRET"]
         print("user credentials already present in .env (setup skipped)")
+        login = snaptrade.authentication.login_snap_trade_user(
+            user_id=user_id, user_secret=secret
+        )
     else:
-        existing_users = snaptrade.authentication.list_snap_trade_users().body
-        if existing_users:
-            # Personal API key: exactly one user is auto-provisioned at
-            # signup; register_snap_trade_user is not available for it.
-            user_id = existing_users[0]
-            secret = ""
-            print(
-                "personal SnapTrade key detected: using the auto-provisioned "
-                "user (registration skipped, not applicable for personal keys)"
-            )
-        else:
-            # Commercial API key: explicit registration required.
-            user_id = "anchor-timur"
-            resp = snaptrade.authentication.register_snap_trade_user(user_id=user_id)
-            secret = resp.body["userSecret"]
-            print("commercial SnapTrade key detected: registered a new user")
+        user_id = "anchor-timur"
+        resp = snaptrade.authentication.register_snap_trade_user(user_id=user_id)
+        secret = resp.body["userSecret"]
+        print("commercial SnapTrade key detected: registered a new user")
         _append_to_env(user_id, secret)
         print("user credentials stored in .env")
-
-    login = snaptrade.authentication.login_snap_trade_user(
-        user_id=user_id, user_secret=secret
-    )
+        login = snaptrade.authentication.login_snap_trade_user(
+            user_id=user_id, user_secret=secret
+        )
     print("\nOpen this URL in your browser and connect Fidelity (read-only):")
     print(login.body["redirectURI"])
 

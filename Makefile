@@ -9,11 +9,12 @@
 # (or the local keyfile); FRED ingestion reads FRED_API_KEY. dbt target/profile
 # is resolved by the caller's env (local ~/.dbt vs CI's DBT_PROFILES_DIR=ci).
 
-.PHONY: help ingest deps build-prod ingest-holdings-demo ingest-holdings-real build-private briefing briefing-real snapshot export-web refresh dagster run-real run-demo
+.PHONY: help ingest deps build-prod ingest-holdings-demo ingest-holdings-real ingest-holdings-real-snaptrade build-private briefing briefing-real snapshot export-web refresh dagster run-real run-demo bootstrap-private refresh-private private-status probe-snaptrade install-private-services uninstall-private-services
 
 # dbt engine for LOCAL work = dbt-fusion (the global binary). CI uses dbt-core
 # 1.11 as the stable gate (see .github/workflows/ci.yml). Override with `make DBT=...`.
 DBT ?= $(HOME)/.local/bin/dbt
+PRIVATE_PYTHON ?= $(CURDIR)/venv/bin/python
 
 DAGSTER_HOME ?= $(CURDIR)/orchestration/.dagster_home
 
@@ -36,6 +37,10 @@ ingest-holdings-demo:  ## Load the committed sample portfolio -> raw_holdings.ho
 ingest-holdings-real:  ## Load a real Fidelity export + private fund classes (data/private/, gitignored)
 	python ingestion/ingest_holdings.py --from-csv data/private/fidelity_positions.csv --portfolio real \
 		--fund-classifications data/private/fund_classifications_real.csv
+
+ingest-holdings-real-snaptrade:  ## Pull read-only live positions from SnapTrade -> private bronze
+	$(PRIVATE_PYTHON) ingestion/ingest_holdings.py --from-snaptrade --portfolio real \
+		--fund-classifications "$${ANCHOR_PRIVATE_DATA_DIR:-data/private}/fund_classifications_real.csv"
 
 build-private: deps  ## dbt build the REAL portfolio into the anchor_*_private datasets
 	cd transformation && $(DBT) build --target prod-private --vars '{holdings_source: real}'
@@ -66,8 +71,26 @@ dagster:  ## Launch the Dagster UI locally (asset graph at http://localhost:3000
 	dagster dev -m anchor_orchestration
 
 run-real: ## Run the Streamlit dashboard locally in real mode (live BigQuery)
-	ANCHOR_PORTFOLIO=real ./venv/bin/streamlit run app/app.py
+	ANCHOR_PORTFOLIO=real ANCHOR_SOURCE=bigquery ./venv/bin/streamlit run app/app.py \
+		--server.address=127.0.0.1 --server.port=8501
 
 run-demo: ## Run the Streamlit dashboard locally in demo mode (live BigQuery when the keyfile exists)
 	./venv/bin/streamlit run app/app.py
 
+bootstrap-private:  ## Create the Python 3.12 runtime for private refresh + local dashboard
+	/bin/zsh scripts/bootstrap_private_ops.sh
+
+refresh-private:  ## SnapTrade -> market data -> private marts -> local briefing
+	$(PRIVATE_PYTHON) scripts/private_daily.py refresh
+
+private-status:  ## Show the last private background refresh status
+	$(PRIVATE_PYTHON) scripts/private_daily.py status
+
+probe-snaptrade:  ## Read-only SnapTrade connectivity check; does not write holdings
+	$(PRIVATE_PYTHON) scripts/private_daily.py probe-snaptrade
+
+install-private-services:  ## Install weekday refresh + localhost dashboard LaunchAgents
+	$(PRIVATE_PYTHON) scripts/private_services.py install
+
+uninstall-private-services:  ## Stop and remove both private LaunchAgents
+	$(PRIVATE_PYTHON) scripts/private_services.py uninstall

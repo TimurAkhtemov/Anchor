@@ -31,6 +31,11 @@ of limitations, not just a working chart.
 - **The ops layer.** CI runs pytest, `dbt build`, and a Playwright smoke test on every
   pull request. dbt docs publish to GitHub Pages. A Dagster `dagster-dbt` asset graph
   runs ingestion, dbt, and the serve export as one lineage.
+- **Private daily operation, local only.** A weekday 18:30 ET macOS LaunchAgent re-pulls
+  read-only SnapTrade holdings, refreshes market data, rebuilds the isolated
+  `anchor_*_private` marts, and regenerates the local briefing. The real dashboard is
+  served on localhost only; nothing private is exported. See
+  `docs/private_daily_operations.md`.
 
 ## The core idea
 
@@ -89,8 +94,9 @@ portfolio, or react faster to the market? If the latter, it doesn't belong here.
 
 Surfacing these is the point. Analytical maturity is knowing what your numbers don't say.
 
-- **Quantities are as-of the last import; prices are daily.** Between holdings pulls,
-  market value mixes a fresh price with a stale share count.
+- **Quantities refresh once per weekday, not continuously.** The private 18:30 ET run
+  re-pulls holdings before recomputing value; trades made after it stay stale until the
+  next successful refresh. The demo portfolio's quantities are as-of its last import.
 - **The CSV real-import path is unvalidated** against an actual Fidelity export; SnapTrade
   became the primary transport.
 - **Commodity and alt holdings are display-only.** No routed benchmark axis in v1; they
