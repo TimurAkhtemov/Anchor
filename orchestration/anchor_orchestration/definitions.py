@@ -47,11 +47,12 @@ DEMO_REFRESH_SELECTION = AssetSelection.assets(
 )
 anchor_refresh_job = define_asset_job("anchor_refresh", selection=DEMO_REFRESH_SELECTION)
 
-# Weekdays 18:30 ET: after the 16:00 close + time for EOD bars / FRED to settle.
+# Weekdays 21:30 ET: after the 16:00 close + time for EOD bars, mutual-fund NAVs
+# and FRED to settle (matches SESSION_SETTLED_ET in ingestion/ingest_yfinance.py).
 daily_refresh_schedule = ScheduleDefinition(
     name="daily_refresh",
     job=anchor_refresh_job,
-    cron_schedule="30 18 * * 1-5",
+    cron_schedule="30 21 * * 1-5",
     execution_timezone="America/New_York",
     default_status=schedule_default_status(),
 )

@@ -31,7 +31,7 @@ The `make dagster` target sets the env this needs:
 | `DAGSTER_HOME` | persistent run history (`orchestration/.dagster_home`, gitignored) |
 | `PYTHONPATH=orchestration` | makes the `anchor_orchestration` package importable |
 
-The daily schedule (`daily_refresh`, weekday 18:30 ET post-close) remains stopped
+The daily schedule (`daily_refresh`, weekday 21:30 ET post-close) remains stopped
 locally and in branch deployments. It defaults to running only when Dagster+
 identifies the deployment as `prod`. Its selection is an explicit list of demo
 assets; adding a future private asset cannot silently add it to this schedule.

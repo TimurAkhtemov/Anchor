@@ -1,6 +1,6 @@
 # Dagster+ Serverless operations
 
-Anchor automates one settled weekday refresh at 18:30 America/New_York. It does not
+Anchor automates one settled weekday refresh at 21:30 America/New_York. It does not
 poll intraday prices, schedule real holdings, or access SnapTrade.
 
 ## Deployment setup
@@ -48,7 +48,7 @@ For production activation, first run with `SNAPSHOT_PUBLISH_ENABLED=false`. Afte
 warehouse and snapshot checks pass, explicitly authorize enabling publication, remove
 the override, and launch one controlled run. Verify one atomic `chore(snapshot)` commit,
 the Streamlit redeploy, and the dashboard's settled-date caption. Then confirm the
-weekday 18:30 ET schedule is running. Snapshot-only commits are ignored by the Dagster
+weekday 21:30 ET schedule is running. Snapshot-only commits are ignored by the Dagster
 deployment workflow, preventing a deployment loop.
 
 ## Routine operations and failures
