@@ -51,7 +51,7 @@ def build_plists(
         "EnvironmentVariables": env,
         "StartCalendarInterval": [
             {"Weekday": weekday, "Hour": hour, "Minute": minute}
-            for weekday in range(2, 7)  # Monday through Friday
+            for weekday in range(1, 6)  # launchd: 0/7 = Sunday, 1 = Monday ... 5 = Friday
         ],
         "ProcessType": "Background",
         "StandardOutPath": str(log_dir / "private_refresh.out.log"),
