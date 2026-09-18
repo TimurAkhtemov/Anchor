@@ -12,7 +12,7 @@ def test_launch_agents_are_private_and_weekday_only(tmp_path):
     dashboard = plists[DASHBOARD_LABEL]
 
     assert refresh["ProgramArguments"][-1] == "refresh"
-    assert [entry["Weekday"] for entry in refresh["StartCalendarInterval"]] == [2, 3, 4, 5, 6]
+    assert [entry["Weekday"] for entry in refresh["StartCalendarInterval"]] == [1, 2, 3, 4, 5]  # launchd weekdays: 1 = Monday
     assert all(entry["Hour"] == 18 and entry["Minute"] == 30 for entry in refresh["StartCalendarInterval"])
     assert dashboard["EnvironmentVariables"]["ANCHOR_PORTFOLIO"] == "real"
     assert dashboard["EnvironmentVariables"]["ANCHOR_SOURCE"] == "bigquery"
