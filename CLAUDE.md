@@ -68,8 +68,11 @@ Note: `make snapshot`/`make refresh` may need
 unless Application Default Credentials are configured. `make refresh` only touches the
 demo world (ingest → build-prod → briefing → snapshot; the briefing step needs local
 Ollama, and its failure halts the chain before the snapshot exports — strict by design).
-Real-portfolio builds are always a manual `make build-private` (+ `make briefing-real`),
-never part of the scheduled/public pipeline. Optional `.env` config for the briefing:
+Real-portfolio builds remain outside the scheduled **public** pipeline. They now run
+through a separate local-only weekday LaunchAgent (`scripts/private_daily.py`): SnapTrade
+→ market ingestion → `prod-private` → local briefing, with no private snapshot/export.
+Use `--skip-briefing` for a single run when another local model workload is active. See
+`docs/private_daily_operations.md`. Optional `.env` config for the briefing:
 `ANCHOR_BRIEFING_PROVIDER` (`ollama` default; `anthropic` = cloud model, DEMO world only —
 a structural guard in `build_provider` hard-fails cloud + real before any network call;
 **scope: the cloud path is deferred until public deployment — everything stays local/Ollama

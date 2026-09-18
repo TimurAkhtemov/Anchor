@@ -53,7 +53,8 @@ The Makefile is the tool-agnostic step list; Dagster wraps the same steps as ass
 
 `make refresh` only touches the demo world. The briefing step needs Ollama running and
 its failure halts the chain before the snapshot exports, by design. Real-portfolio builds
-are always a manual `make build-private`, never part of any scheduled or public path.
+are never part of any scheduled *public* path: they run manually (`make build-private`) or
+through the separate local-only weekday service described below.
 
 ## Real portfolio (local only, never in the public deploy)
 
@@ -68,6 +69,12 @@ This builds into `anchor_*_private`, isolated from every public target by the
 compile-time interlock. Or connect live: run `python ingestion/snaptrade_connect.py`
 once, then `python ingestion/ingest_holdings.py --from-snaptrade --portfolio real`
 (requires the SnapTrade secrets in `.env`).
+
+For daily private use, run `make bootstrap-private`, then `make install-private-services`.
+This installs a weekday 21:30 ET refresh and a localhost-only real dashboard at
+<http://127.0.0.1:8501>. `make private-status` shows the last result; append
+`--skip-briefing` to the private runner during a temporary local-model conflict. Full
+operations and privacy contract: `docs/private_daily_operations.md`.
 
 ## Briefing
 
