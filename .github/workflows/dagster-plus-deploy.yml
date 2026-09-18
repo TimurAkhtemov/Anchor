@@ -24,6 +24,9 @@ env:
 jobs:
   deploy:
     name: Dagster Serverless Deploy
+    # Dormant until the operator activates Dagster+ (runbook step 1 sets this
+    # variable); skipped rather than red on every PR and push before then.
+    if: vars.DAGSTER_CLOUD_ORGANIZATION != ''
     runs-on: ubuntu-22.04
     steps:
       - name: Prerun checks

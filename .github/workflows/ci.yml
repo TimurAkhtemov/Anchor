@@ -47,6 +47,12 @@ jobs:
     needs: guard
     if: needs.guard.outputs.has_key == 'true'
     runs-on: ubuntu-latest
+    # Every run builds into the one shared dbt_ci dataset. Two concurrent builds
+    # double-load seeds and tables (spurious `unique` failures), so serialize them
+    # across all refs; queued runs wait rather than cancel.
+    concurrency:
+      group: dbt-ci-dataset
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v6
 
