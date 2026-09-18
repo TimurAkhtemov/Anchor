@@ -10,7 +10,7 @@ their lineage from dbt's own ref/source graph. The translator does two things:
   2. get_group_name — clusters models by warehouse layer (folder) so the graph
      reads bronze -> silver (staging/intermediate) -> gold (marts).
 """
-from dagster import AssetExecutionContext, AssetKey
+from dagster import AssetExecutionContext, AssetKey, MaterializeResult, asset
 from dagster_dbt import DagsterDbtTranslator, DbtCliResource, dbt_assets
 
 from anchor_orchestration.resources import dbt_project
@@ -41,3 +41,21 @@ def anchor_dbt_assets(context: AssetExecutionContext, dbt: DbtCliResource):
     """Run `dbt build` (models + tests) on the prod target; tests surface as
     asset checks in the Dagster UI."""
     yield from dbt.cli(["build"], context=context).stream()
+
+
+@asset(
+    name="source_freshness",
+    deps=[
+        AssetKey("raw_fred_series"),
+        AssetKey("raw_fred_observations"),
+        AssetKey("raw_yfinance_tickers"),
+        AssetKey("raw_yfinance_prices"),
+    ],
+    group_name="quality",
+    compute_kind="dbt",
+    description="dbt source-freshness contract for the settled bronze data.",
+)
+def source_freshness(context: AssetExecutionContext, dbt: DbtCliResource):
+    """Run the source freshness contract separately from dbt build."""
+    dbt.cli(["source", "freshness"], context=context).wait()
+    return MaterializeResult(metadata={"target": "prod"})

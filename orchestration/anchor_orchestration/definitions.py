@@ -8,24 +8,44 @@ the UI). v1 runs locally via `make dagster`; Dagster+ Serverless is the follow-u
 for the unattended scheduled story.
 """
 from dagster import (
-    AssetSelection,
     DefaultScheduleStatus,
     Definitions,
     ScheduleDefinition,
     define_asset_job,
 )
 
-from anchor_orchestration.dbt import anchor_dbt_assets
+import os
+
+from dagster import AssetSelection
+
+from anchor_orchestration.dbt import anchor_dbt_assets, source_freshness
 from anchor_orchestration.ingestion import (
     ingest_fred_asset,
     ingest_holdings_demo_asset,
     ingest_yfinance_asset,
 )
 from anchor_orchestration.resources import bigquery_resource, dbt_resource
-from anchor_orchestration.snapshot import snapshot_parquet
+from anchor_orchestration.snapshot import publish_snapshot_asset, snapshot_parquet
 
-# One job over every asset — ingest -> dbt build -> snapshot, in dependency order.
-anchor_refresh_job = define_asset_job("anchor_refresh", selection=AssetSelection.all())
+
+def schedule_default_status() -> DefaultScheduleStatus:
+    return (
+        DefaultScheduleStatus.RUNNING
+        if os.environ.get("DAGSTER_CLOUD_DEPLOYMENT_NAME") == "prod"
+        else DefaultScheduleStatus.STOPPED
+    )
+
+# Explicit public/demo selection: future private assets cannot silently enter the schedule.
+DEMO_REFRESH_SELECTION = AssetSelection.assets(
+    ingest_fred_asset,
+    ingest_holdings_demo_asset,
+    ingest_yfinance_asset,
+    source_freshness,
+    anchor_dbt_assets,
+    snapshot_parquet,
+    publish_snapshot_asset,
+)
+anchor_refresh_job = define_asset_job("anchor_refresh", selection=DEMO_REFRESH_SELECTION)
 
 # Weekdays 18:30 ET: after the 16:00 close + time for EOD bars / FRED to settle.
 daily_refresh_schedule = ScheduleDefinition(
@@ -33,7 +53,7 @@ daily_refresh_schedule = ScheduleDefinition(
     job=anchor_refresh_job,
     cron_schedule="30 18 * * 1-5",
     execution_timezone="America/New_York",
-    default_status=DefaultScheduleStatus.STOPPED,
+    default_status=schedule_default_status(),
 )
 
 defs = Definitions(
@@ -42,7 +62,9 @@ defs = Definitions(
         ingest_holdings_demo_asset,
         ingest_yfinance_asset,
         anchor_dbt_assets,
+        source_freshness,
         snapshot_parquet,
+        publish_snapshot_asset,
     ],
     jobs=[anchor_refresh_job],
     schedules=[daily_refresh_schedule],

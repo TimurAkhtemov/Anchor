@@ -109,8 +109,8 @@ Surfacing these is the point. Analytical maturity is knowing what your numbers d
 - **Co-movement is descriptive and noisy.** A trailing correlation, not a sensitivity.
 - **Freshness rides yfinance.** Free, scraped, no SLA. Migration path in
   `docs/ingestion_roadmap.md`.
-- **The briefing table sits outside dbt lineage**, and the Dagster graph runs locally, not
-  on a schedule yet.
+- **The briefing table sits outside dbt lineage**, and the public Dagster+ Serverless
+  schedule is built but not yet activated, so the demo refresh is still hand-triggered.
 
 ## Roadmap
 
@@ -120,6 +120,9 @@ what shipped and where it deviated from `docs/make_it_real_design.md`). What's n
 deepens trust and reflection rather than the speed of market feedback:
 
 1. **Unattended post-close operation** on Dagster+ Serverless, demo-only by construction.
+   The deployment config, build-time manifest packaging, snapshot validation, and atomic
+   publication are implemented (`docs/dagster_serverless_operations.md`); activating the
+   live schedule is the remaining operator step.
 2. **Reliable settled end-of-day data** per `docs/ingestion_roadmap.md`.
 3. **Grounded portfolio history**: allocation drift, concentration, contribution.
 4. **The Daily Note briefing** (`docs/briefing_daily_note_design.md`, phase 1 shipped).

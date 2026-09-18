@@ -11,6 +11,12 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+# Local development imports this package as ``anchor_orchestration`` via
+# PYTHONPATH=orchestration; the Serverless wheel imports it as
+# ``orchestration.anchor_orchestration``. Keep one canonical absolute-import
+# seam for the modules below in both environments.
+sys.modules.setdefault("anchor_orchestration", sys.modules[__name__])
+
 # Re-export the code location's Definitions so `dagster dev -m anchor_orchestration`
 # (and the pyproject `[tool.dagster] module_name`) resolve it. Imported here —
 # after the sys.path insert — so the downstream `ingestion.*` imports it pulls in

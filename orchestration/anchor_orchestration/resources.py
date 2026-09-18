@@ -10,23 +10,62 @@ The dbt resources point dagster-dbt at this repo's dbt project on the `prod`
 target, so materializing the dbt assets runs `dbt build --target prod` into the
 anchor_* datasets the dashboard reads.
 """
+import os
+from contextlib import contextmanager
 import json
 from pathlib import Path
+from typing import Iterator
 
+from dagster import EnvVar
 from dagster_dbt import DbtCliResource, DbtProject
 from dagster_gcp import BigQueryResource
+from google.cloud import bigquery
+from google.oauth2 import service_account
+
+from orchestration.prepare_manifest import drop_hook_nodes
 
 PROJECT_ID = "anchor-495115"
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-bigquery_resource = BigQueryResource(project=PROJECT_ID)
+IS_DAGSTER_CLOUD = bool(os.environ.get("DAGSTER_CLOUD_DEPLOYMENT_NAME"))
+
+class AnchorBigQueryResource(BigQueryResource):
+    """BigQuery resource sharing dbt's raw service-account JSON secret."""
+
+    service_account_json: str | None = None
+
+    @contextmanager
+    def get_client(self) -> Iterator[bigquery.Client]:
+        if not self.service_account_json:
+            with super().get_client() as client:
+                yield client
+            return
+        credentials = service_account.Credentials.from_service_account_info(
+            json.loads(self.service_account_json)
+        )
+        yield bigquery.Client(
+            project=self.project,
+            location=self.location,
+            credentials=credentials,
+        )
+
+
+bigquery_resource = (
+    AnchorBigQueryResource(project=PROJECT_ID, service_account_json=EnvVar("BQ_SA_KEY"))
+    if IS_DAGSTER_CLOUD
+    else AnchorBigQueryResource(project=PROJECT_ID)
+)
 
 # Profiles live in ~/.dbt (where the `prod` target is defined), not the project
 # dir. Setting profiles_dir + target on the DbtProject means both the manifest
 # prep step (prepare_if_dev's internal `dbt deps`/`dbt parse`) and the runtime
 # resource inherit them — so the parse uses --target prod and the asset keys
 # carry the anchor_* prod schemas.
-DBT_PROFILES_DIR = Path.home() / ".dbt"
+DBT_PROFILES_DIR = (
+    REPO_ROOT / "orchestration" / "dbt_profiles"
+    if IS_DAGSTER_CLOUD
+    else Path(os.environ.get("DBT_PROFILES_DIR", Path.home() / ".dbt"))
+)
 
 # DbtProject regenerates the manifest from source on `dagster dev`
 # (prepare_if_dev), so the Dagster asset graph never drifts from the dbt project.
@@ -34,35 +73,7 @@ dbt_project = DbtProject(project_dir=REPO_ROOT / "transformation", profiles_dir=
 dbt_project.prepare_if_dev()
 
 
-def _drop_hook_nodes_for_dagster(manifest_path: Path) -> None:
-    """Strip on-run-start/on-run-end hook ("operation") nodes from the parsed
-    manifest before dagster-dbt reads it.
-
-    dagster-dbt's asset-graph construction walks every manifest node through
-    dbt-core's own NodeSelector, which unconditionally reads `node.config.enabled`.
-    dbt-fusion (our local/CI engine) never populates `config` on operation nodes
-    (the `assert_portfolio_isolation()` on-run-start hook in dbt_project.yml), so
-    that read raises AttributeError and the whole Definitions object fails to
-    load. Hooks aren't `ref()`-able resources — they run as a side effect of
-    `dbt build`, not a materializable asset — so Dagster doesn't need to see them
-    at all; dropping them from its copy of the manifest sidesteps the crash
-    without touching how dbt itself builds. Idempotent and manifest is a
-    gitignored build artifact, so this never touches version control.
-    """
-    if not manifest_path.exists():
-        return
-    manifest = json.loads(manifest_path.read_text())
-    nodes = manifest.get("nodes", {})
-    hook_ids = [uid for uid, node in nodes.items() if node.get("resource_type") == "operation"]
-    if not hook_ids:
-        return
-    for uid in hook_ids:
-        del nodes[uid]
-        manifest.get("parent_map", {}).pop(uid, None)
-        manifest.get("child_map", {}).pop(uid, None)
-    manifest_path.write_text(json.dumps(manifest))
-
-
-_drop_hook_nodes_for_dagster(dbt_project.manifest_path)
+if dbt_project.manifest_path.exists():
+    drop_hook_nodes(dbt_project.manifest_path)
 
 dbt_resource = DbtCliResource(project_dir=dbt_project)
