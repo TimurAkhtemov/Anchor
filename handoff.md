@@ -13,18 +13,19 @@ today, operator steps still owed, deviations from the locked designs, and gotcha
 - **Both capstones shipped** (ops layer; "make it real" multi-asset holdings), plus the
   LLM briefing (PRs #5–#7), the immersive web tour (#8), and Daily Note phase ① (#9).
 - **Landed 2026-09-18:** private daily ops (#10), Dagster+ Serverless deployment (#12),
-  and a web-test fix (#11). All three are *code-complete but not yet operating* — see
-  the next section.
+  and a web-test fix (#11).
+- **Private daily refresh is operating.** LaunchAgents reinstalled from this checkout
+  2026-09-18 (Mon–Fri 21:30 ET; the old iCloud-synced `~/Desktop` worktree is removed).
+  A manual `refresh --skip-briefing` that day passed `prod-private` 154/154 with data
+  as of 2026-09-17 — the first private success since 2026-08-29, after the old
+  18:30 Tue–Sat schedule raced mutual-fund NAVs and failed ~13 of 18 runs. The first
+  *scheduled* run, and the first with the briefing step, had not yet been observed.
+- Serverless is *code-complete but not yet operating* — see the next section.
 
 ## Operator steps still owed (user-owned)
 
-1. **Reinstall the private LaunchAgents from `~/Programming`.** The installed agents
-   still run the pre-fix code out of a worktree at `~/Desktop/Programming/Personal/Anchor`
-   (iCloud-synced — violates the repo-location rule) on the old schedule: **18:30 ET,
-   Tue–Sat**. That schedule raced mutual-fund NAVs and failed ~13 of 18 runs; last
-   private success was 2026-08-29. Fix: `make bootstrap-private && make
-   install-private-services` from this checkout, confirm with `make private-status`,
-   then `git worktree remove` the Desktop one (its `var/` holds only logs + status).
+1. **Confirm the first scheduled private run** with `make private-status` (expect
+   `state: success` and a fresh briefing in the localhost dashboard).
 2. **Activate Dagster+ Serverless** per `docs/dagster_serverless_operations.md`. The
    deploy workflow is dormant until repo variable `DAGSTER_CLOUD_ORGANIZATION` (+ secret
    `DAGSTER_CLOUD_API_TOKEN`) is set — runbook step 1.
@@ -32,7 +33,7 @@ today, operator steps still owed, deviations from the locked designs, and gotcha
 
 ## What's next (README roadmap order)
 
-1. Unattended post-close operation — built; blocked only on operator step 2.
+1. Unattended post-close operation — built; blocked only on operator step 2 (Dagster+).
 2. Reliable settled EOD data — `docs/ingestion_roadmap.md`, still deferred.
 3. Grounded portfolio history — allocation drift, concentration, contribution.
 4. **Daily Note phase ② — derived-signal marts** (`portfolio_rate_sensitivity`,
