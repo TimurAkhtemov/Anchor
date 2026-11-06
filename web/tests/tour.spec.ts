@@ -40,6 +40,25 @@ test("tour renders, carries every script step, and spotlights on scroll", async 
   );
 });
 
+test("the reading has no empty gaps and links back to the dashboard", async ({
+  page,
+}) => {
+  test.skip(!bundle.briefing, "the tour needs a briefing");
+  await page.goto("/reading/");
+  const { height, inner } = await page.evaluate(() => ({
+    height: document.documentElement.scrollHeight,
+    inner: window.innerHeight,
+  }));
+  const steps = bundle.briefing!.steps.length;
+  expect(height).toBeLessThan((steps + 2) * 0.8 * inner);
+
+  await page.locator('[data-scene="coda"]').scrollIntoViewIfNeeded();
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  const back = page.locator('[data-scene="coda"] a[href="/"]');
+  await expect(back).toBeVisible();
+  await expect(back).toContainText(/dashboard/i);
+});
+
 test("without a briefing the reading route points back to the dashboard", async ({
   page,
 }) => {

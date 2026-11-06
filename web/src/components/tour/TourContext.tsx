@@ -43,7 +43,7 @@ export function TourProvider({
 
   useEffect(() => {
     // A sentinel is "active" while it overlaps the middle 10% of the viewport.
-    // Sentinels are contiguous 100svh blocks, so at most one occupies the band;
+    // Sentinels are contiguous 70svh blocks, so at most one occupies the band;
     // boundary frames resolve to the earlier step via Math.min.
     const obs = new IntersectionObserver(
       (entries) => {
