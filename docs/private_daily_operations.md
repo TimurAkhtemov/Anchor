@@ -9,7 +9,8 @@ Anchor has two deliberately separate operating paths:
 - **Public/demo:** the Dagster graph and GitHub Actions refresh, public marts, and the
   committed web bundle behind the public site.
 - **Private/real:** a macOS user service that reads the user's SnapTrade Personal
-  connection, refreshes shared public market data, builds only `prod-private`,
+  connection, ingests FRED and its own yfinance prices for the private world
+  (`raw_yfinance_private`, not the public tables), builds only `prod-private`,
   generates the real briefing locally, and builds the same web app into gitignored
   `var/private_web`.
 
@@ -21,13 +22,18 @@ to `127.0.0.1:8501`, the same address the Streamlit app used.
 | Service | Behavior |
 |---|---|
 | `com.timurakhtemov.anchor.private-refresh` | Weekdays at 21:30 America/New_York: SnapTrade → FRED/yfinance → private dbt build → local briefing → private bundle → private site → atomic swap |
-| `com.timurakhtemov.anchor.private-dashboard` | `venv/bin/python -m http.server 8501 --bind 127.0.0.1 --directory var/private_web/current`, serving <http://127.0.0.1:8501> while the user is logged in. It holds no secrets and reads no database. |
+| `com.timurakhtemov.anchor.private-dashboard` | `venv/bin/python scripts/private_static_server.py 8501 var/private_web/current`, serving <http://127.0.0.1:8501> while the user is logged in. It holds no secrets and reads no database. |
 
 The refresh uses a non-blocking file lock, so a delayed run cannot overlap the
 next invocation. Status is written atomically to
 `var/private_daily_status.json`; it contains timestamps, stage names, and the
 market as-of date only—never holdings or credentials.
 
+The server binds only `127.0.0.1` and checks the `Host` header: any value other than
+`127.0.0.1:8501` or `localhost:8501` gets a 403. Plain `python -m http.server` does no
+such check, so a DNS-rebinding page open in the browser could have read the dashboard.
+Reach the site at `http://127.0.0.1:8501` or `http://localhost:8501`; any other
+hostname that resolves to loopback is refused by design.
 The server resolves `current` per request, so a new build goes live with no restart.
 Before the first build it answers 404 rather than crash-looping, so **after a first
 install, run `make refresh-private` to have a page to serve.**
@@ -131,3 +137,6 @@ they reach these logs because raw SDK exceptions can include signed-request cont
 The Mac must be powered on and the user logged in for these user-level services
 to run. `launchd` retains the calendar schedule, but this is intentionally not a
 cloud availability guarantee.
+
+`next build` is limited to 600 seconds; a hang counts as a site-build failure (partial
+build removed, `current` untouched) so it cannot hold the refresh lock.

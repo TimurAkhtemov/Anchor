@@ -32,6 +32,11 @@ dataset -> Sharing -> Permissions -> Add principal):
 - `anchor_snapshots`
 - `dbt_ci`
 
+All nine datasets must already exist before you grant Data Editor: you cannot add a
+principal to a dataset that is not there. Check with `bq ls --project_id=anchor-495115`
+or in BigQuery Studio's explorer, and run the matching dbt/ingestion step once under the
+broad key to create any that are missing.
+
 **Table level**: `BigQuery Data Viewer` on the table `raw_holdings.holdings_demo` only
 (BigQuery Studio -> table -> Share -> Manage permissions).
 
@@ -95,7 +100,8 @@ Required repo secrets: `BQ_SA_KEY` (the public service account key), `FRED_API_K
   nothing spent. Normal while the settled date is at most 4 days old; the age check still
   runs on this path, so a stalled date turns the run red (see below) instead of staying green.
 - **Green, commit with no briefing**: the briefing step failed (log shows
-  `WARNING: briefing failed`). Numbers published; the next run (or a manual dispatch)
+  `WARNING: briefing failed`, plus a workflow warning annotation and a line in the run
+  summary). The briefing is limited to 15 minutes; a timeout counts as a failure. Numbers published; the next run (or a manual dispatch)
   retries the briefing because the bundle has none for that date.
 - **Red at ingest or dbt build**: bad data or an outage upstream. Nothing was changed; the
   site keeps the previous bundle. Fix and re-run.

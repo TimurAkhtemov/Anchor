@@ -304,3 +304,16 @@ def test_successful_briefing_emits_no_warning(tmp_path, monkeypatch, capsys):
     main()
     assert "::warning::" not in capsys.readouterr().out
     assert not summary.exists()
+
+
+def test_workflow_secrets_are_step_scoped_and_key_removed_before_node():
+    text = WORKFLOW.read_text()
+    steps_at = text.index("    steps:")
+    assert "secrets." not in text[:steps_at], "no secret may be set at workflow or job level"
+    assert "secrets." in text[steps_at:]
+    removal = text.index("rm -f /tmp/anchor-bq-key.json")
+    node = text.index("actions/setup-node")
+    assert removal < node
+    assert text.index("make public-refresh") < removal
+    # nothing after the removal step may see a secret either
+    assert "secrets." not in text[removal:]

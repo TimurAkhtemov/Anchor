@@ -34,10 +34,8 @@ jobs:
     env:
       # absolute: the Makefile runs dbt from transformation/, so a relative path would miss
       DBT_PROFILES_DIR: ${{ github.workspace }}/orchestration/dbt_profiles
-      BQ_SA_KEY: ${{ secrets.BQ_SA_KEY }}
-      FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      ANCHOR_BRIEFING_PROVIDER: anthropic
+      # Secrets are step-scoped, on the Python steps that need them: npm install scripts
+      # and Playwright below must never see them.
       GOOGLE_APPLICATION_CREDENTIALS: /tmp/anchor-bq-key.json
     steps:
       - uses: actions/checkout@v6
@@ -51,17 +49,31 @@ jobs:
 
       - name: Write BigQuery key
         # via env (not inline) to avoid leaking/injecting the secret into the shell
+        env:
+          BQ_SA_KEY: ${{ secrets.BQ_SA_KEY }}
         run: printf '%s' "$BQ_SA_KEY" > /tmp/anchor-bq-key.json
 
       - name: Ingest FRED + yfinance (demo world)
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
         run: make ingest
 
       - name: dbt build (prod)
+        env:
+          BQ_SA_KEY: ${{ secrets.BQ_SA_KEY }}  # read by the dbt profile
         run: make build-prod DBT=dbt
 
       - name: Briefing + export + validate
         id: refresh
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANCHOR_BRIEFING_PROVIDER: anthropic
         run: make public-refresh
+
+      - name: Remove BigQuery key
+        # before any Node step: npm install scripts and Playwright must not find it
+        if: always()
+        run: rm -f /tmp/anchor-bq-key.json
 
       - uses: actions/setup-node@v6
         with:
