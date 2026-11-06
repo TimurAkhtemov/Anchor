@@ -82,7 +82,9 @@ operations and privacy contract: `docs/private_daily_operations.md`.
 python app/generate_briefing.py --portfolio demo   # writes copilot_briefing; needs Ollama
 ```
 
-Optional `.env` config: `ANCHOR_BRIEFING_MODEL` (default `gemma4:31b`), `OLLAMA_HOST`,
+Optional `.env` config: `ANCHOR_BRIEFING_PROVIDER` (`ollama` default | `llama-server` |
+`anthropic`), `ANCHOR_BRIEFING_MODEL` (Ollama only; default `gemma4:31b`), `OLLAMA_HOST`,
+`ANCHOR_LLAMA_SERVER_HOST` (default `http://127.0.0.1:8080`), `ANCHOR_BRIEFING_ATTEMPTS`,
 `ANCHOR_BRIEFING_PROVIDER` (`ollama` default; the `anthropic` cloud path is dormant and
 structurally refuses the real portfolio).
 

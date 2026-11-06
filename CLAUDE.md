@@ -73,13 +73,17 @@ through a separate local-only weekday LaunchAgent (`scripts/private_daily.py`): 
 → market ingestion → `prod-private` → local briefing, with no private snapshot/export.
 Use `--skip-briefing` for a single run when another local model workload is active. See
 `docs/private_daily_operations.md`. Optional `.env` config for the briefing:
-`ANCHOR_BRIEFING_PROVIDER` (`ollama` default; `anthropic` = cloud model, DEMO world only —
+`ANCHOR_BRIEFING_PROVIDER` (`ollama` default; `llama-server` = the resident local
+llama.cpp service on `127.0.0.1:8080`, **what the private refresh uses now** — serves one
+fixed model, ignores the model name; `anthropic` = cloud model, DEMO world only —
 a structural guard in `build_provider` hard-fails cloud + real before any network call;
 **scope: the cloud path is deferred until public deployment — everything stays local/Ollama
 for the MVP**, no API key in `.env` by design),
 `ANCHOR_BRIEFING_MODEL` (default `gemma4:31b` — won the post-ship A/B on verdict/attribution
 discipline; ~4 min/generation is fine at pipeline time), `OLLAMA_HOST`,
-`ANCHOR_BRIEFING_CLOUD_MODEL` (default `claude-opus-4-8`), `ANTHROPIC_API_KEY`.
+`ANCHOR_BRIEFING_CLOUD_MODEL` (default `claude-opus-4-8`), `ANTHROPIC_API_KEY`,
+`ANCHOR_LLAMA_SERVER_HOST`, `ANCHOR_BRIEFING_ATTEMPTS` (regenerate on validation failure
+with the validator's errors fed back; default 3).
 
 Live: dashboard → anchor-dashboard.streamlit.app · dbt docs → timurakhtemov.github.io/Anchor
 
