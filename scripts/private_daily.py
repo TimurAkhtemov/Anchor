@@ -4,7 +4,7 @@
 This runner is intentionally separate from the public/demo Dagster graph. It
 pulls read-only brokerage positions through SnapTrade, refreshes shared market
 data, builds only the ``prod-private`` dbt target, normally generates the
-private briefing through local Ollama, then exports a bundle and builds the
+private briefing through a local model server, then exports a bundle and builds the
 static site, both only under gitignored ``var/private_web``. A failed briefing
 degrades the run (fresh numbers, no narration) instead of failing it.
 ``--skip-briefing`` provides a temporary maintenance escape hatch when another
@@ -31,6 +31,7 @@ VAR_DIR = REPO_ROOT / "var"
 WEB_DIR = REPO_ROOT / "web"
 STATUS_PATH = VAR_DIR / "private_daily_status.json"
 LOCK_PATH = VAR_DIR / "private_daily.lock"
+LOCAL_PROVIDERS = {"ollama", "llama-server", "llama_server", "llamaserver"}
 REQUIRED_NONEMPTY_ENV = (
     "FRED_API_KEY",
     "SNAPTRADE_CLIENT_ID",
@@ -103,8 +104,11 @@ def configure_environment() -> tuple[Path, Path, Path, Path]:
 
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(keyfile)
     # Real holdings are local-only even if the user's general .env selects a
-    # cloud provider for the demo world.
-    os.environ["ANCHOR_BRIEFING_PROVIDER"] = "ollama"
+    # cloud provider for the demo world. Either local provider is honoured;
+    # anything else falls back to Ollama (build_provider still hard-fails
+    # cloud + real as the structural guard).
+    if os.environ.get("ANCHOR_BRIEFING_PROVIDER", "").strip().lower() not in LOCAL_PROVIDERS:
+        os.environ["ANCHOR_BRIEFING_PROVIDER"] = "ollama"
     return env_file, python, dbt, private_dir
 
 

@@ -13,10 +13,12 @@ Run locally (needs BigQuery creds + Ollama running, unless on the cloud provider
     python app/generate_briefing.py --dry-run --out briefing.json  # validate, no write
 
 Config (environment; .env for local non-secret settings):
-    ANCHOR_BRIEFING_PROVIDER     ollama (default) | anthropic — cloud is DEMO ONLY;
-                                 combined with --portfolio real it hard-fails
+    ANCHOR_BRIEFING_PROVIDER     ollama (default) | llama-server | anthropic —
+                                 cloud is DEMO ONLY; with --portfolio real it hard-fails
     ANCHOR_BRIEFING_MODEL        Ollama model (default qwen3.6:35b)
     OLLAMA_HOST                  Ollama endpoint
+    ANCHOR_LLAMA_SERVER_HOST     llama-server endpoint (default http://127.0.0.1:8080)
+    ANCHOR_BRIEFING_ATTEMPTS     regenerate on validation failure, up to N (default 3)
     ANCHOR_BRIEFING_CLOUD_MODEL  Anthropic model (default claude-sonnet-5-5)
     ANTHROPIC_API_KEY            required for the anthropic provider; set in the
                                  shell or GitHub secrets, not .env

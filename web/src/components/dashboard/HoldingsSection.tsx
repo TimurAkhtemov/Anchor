@@ -200,6 +200,16 @@ function HoldingRow({
         </div>
         <div className="text-[12.5px] text-ink-muted">
           {weight} weight
+          {p.unrealized_gain_pct !== null && (
+            <span data-gain-since-purchase>
+              {" "}
+              ·{" "}
+              <span className={returnTone(p.unrealized_gain_pct)}>
+                {fmtSigned(p.unrealized_gain_pct, "%")}
+              </span>{" "}
+              since purchase
+            </span>
+          )}
           <span className={`lg:hidden ${returnTone(value)}`}>
             {" "}
             · {fmtSigned(value, "%")}

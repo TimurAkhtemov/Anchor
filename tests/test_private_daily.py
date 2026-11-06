@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import os
+
 import pytest
 
 from scripts import private_daily
@@ -191,3 +193,17 @@ def test_preflight_reports_missing_node_modules(ready_runtime):
     (ready_runtime / "web" / "node_modules").rmdir()
     with pytest.raises(PreflightError, match="bootstrap-private"):
         preflight()
+
+
+@pytest.mark.parametrize("provider", ["llama-server", "ollama"])
+def test_private_run_honours_a_local_provider(ready_runtime, monkeypatch, provider):
+    monkeypatch.setenv("ANCHOR_BRIEFING_PROVIDER", provider)
+    private_daily.configure_environment()
+    assert os.environ["ANCHOR_BRIEFING_PROVIDER"] == provider
+
+
+@pytest.mark.parametrize("provider", ["anthropic", "", "  "])
+def test_private_run_forces_local_when_provider_is_not(ready_runtime, monkeypatch, provider):
+    monkeypatch.setenv("ANCHOR_BRIEFING_PROVIDER", provider)
+    private_daily.configure_environment()
+    assert os.environ["ANCHOR_BRIEFING_PROVIDER"] == "ollama"

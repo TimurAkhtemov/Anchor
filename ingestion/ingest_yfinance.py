@@ -4,6 +4,7 @@ import os
 import sys
 import time
 import logging
+import threading
 import pandas as pd
 from datetime import datetime, UTC
 from pathlib import Path
@@ -26,6 +27,11 @@ HOLDINGS_TABLE_BY_WORLD = {"demo": "holdings_demo", "real": "holdings_real"}
 # (hour, minute) ET after which today's session counts as settled. The private
 # LaunchAgent and the Dagster schedule both run at this time; keep them in step.
 SESSION_SETTLED_ET = (21, 30)
+# Hard wall-clock cap on a single yfinance call. yfinance passes its own 30 s
+# timeout to curl, but the private refresh log shows calls stalling 4-15 min
+# with 0 bytes received (one night: 2 h 38 min for 44 tickers). A stalled
+# fetch must cost seconds, not the whole run.
+FETCH_DEADLINE_S = 60
 KEYFILE_PATH = "/Users/timurakhtemov/.dbt/anchor-bigquery-key.json"
 
 _SEED_PATH = Path(__file__).parent.parent / "transformation" / "seeds" / "benchmark_etfs.csv"
@@ -70,6 +76,31 @@ def build_bigquery_client():
     logger.info("Initializing BigQuery client with default credentials...")
     return bigquery.Client(project=PROJECT_ID)
 
+def call_with_deadline(fn, seconds=None):
+    """Run fn() and raise TimeoutError if it hasn't returned within `seconds`.
+
+    The call runs in a daemon thread so a stalled network read can be abandoned:
+    the thread is left to die with the process, and the caller moves on.
+    """
+    seconds = FETCH_DEADLINE_S if seconds is None else seconds
+    result, error = [], []
+
+    def run():
+        try:
+            result.append(fn())
+        except BaseException as e:  # re-raised in the caller's thread below
+            error.append(e)
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(seconds)
+    if worker.is_alive():
+        raise TimeoutError(f"call exceeded {seconds}s deadline")
+    if error:
+        raise error[0]
+    return result[0]
+
+
 def fetch_ticker_metadata(ticker, label=None, redact=False):
     """
     Fetches ticker info from yfinance with retry mechanism and backoff.
@@ -82,7 +113,7 @@ def fetch_ticker_metadata(ticker, label=None, redact=False):
     t = yf.Ticker(ticker)
     for attempt in range(3):
         try:
-            info = t.info
+            info = call_with_deadline(lambda: t.info)
             if info and isinstance(info, dict):
                 return info
         except Exception as e:
@@ -102,7 +133,7 @@ def fetch_ticker_prices(ticker, period="5y", label=None, redact=False):
     t = yf.Ticker(ticker)
     try:
         # Download historical prices
-        hist = t.history(period=period)
+        hist = call_with_deadline(lambda: t.history(period=period))
         return hist
     except Exception as e:
         logger.error(f"Failed to fetch prices for {label}: {type(e).__name__ if redact else e}")

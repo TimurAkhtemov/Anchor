@@ -25,6 +25,7 @@ import json
 import logging
 import os
 import re
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -38,6 +39,13 @@ BRIEFING_TABLE = "copilot_briefing"
 # so it is the default. Swap via ANCHOR_BRIEFING_MODEL.
 DEFAULT_MODEL = "qwen3.6:35b"
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
+# llama.cpp's llama-server (the resident local Qwen service), OpenAI-compatible.
+# It serves exactly one model and ignores the request's model name; the name
+# is read back from /v1/models so the artifact records what actually answered.
+DEFAULT_LLAMA_SERVER_HOST = "http://127.0.0.1:8080"
+# Validation failures are regenerated with the validator's errors appended to
+# the prompt; network / privacy errors never retry.
+DEFAULT_MAX_ATTEMPTS = 3
 # Cloud model for the demo world (docs/briefing_daily_note_design.md, lever D).
 # Deliberately a separate env var from ANCHOR_BRIEFING_MODEL, which stays pinned
 # to the Ollama model — sharing one var would send an Ollama model name to
@@ -162,8 +170,9 @@ def describe_warnings(warnings: list[str], portfolio: str) -> list[str]:
 class BriefingProvider(Protocol):
     """Anchor's own tiny provider interface (deliberately not an OpenAI shim).
 
-    Two implementations: OllamaProvider (local, the only one allowed for the
-    real portfolio) and AnthropicProvider (cloud, demo world only). The
+    Three implementations: OllamaProvider and LlamaServerProvider (local, the
+    only kind allowed for the real portfolio) and AnthropicProvider (cloud,
+    demo world only). The
     generator's privacy guard keys off `is_local`; build_provider() refuses to
     construct a cloud provider for the real portfolio in the first place.
     """
@@ -221,6 +230,61 @@ class OllamaProvider:
             ) from exc
         resp.raise_for_status()
         return resp.json()["message"]["content"].strip()
+
+
+class LlamaServerProvider:
+    """Local llama-server over its OpenAI-compatible endpoint. Same privacy
+    standing as Ollama: local, so allowed for the real portfolio."""
+
+    name = "llama-server"
+    is_local = True
+
+    def __init__(
+        self,
+        host: str | None = None,
+        timeout: int = 900,
+        temperature: float = 0.1,
+    ):
+        self.host = (
+            host or os.environ.get("ANCHOR_LLAMA_SERVER_HOST", DEFAULT_LLAMA_SERVER_HOST)
+        ).rstrip("/")
+        self.timeout = timeout
+        self.temperature = temperature
+        self.model = "llama-server"  # replaced by the served model id on first call
+
+    def generate(
+        self, system: str, prompt: str, *, format_schema: dict | None = None
+    ) -> str:
+        import requests  # lazy: not part of the app deploy's requirements
+
+        body = {
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": self.temperature,
+        }
+        if format_schema is not None:
+            # Grammar-constrained decoding, the OpenAI structured-outputs shape.
+            # Reasoning (if the model thinks) comes back separately in
+            # reasoning_content; only content is constrained.
+            body["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": "tour", "schema": format_schema},
+            }
+        try:
+            models = requests.get(f"{self.host}/v1/models", timeout=10).json()
+            self.model = models["data"][0]["id"]
+            resp = requests.post(
+                f"{self.host}/v1/chat/completions", json=body, timeout=self.timeout
+            )
+        except requests.exceptions.ConnectionError as exc:
+            raise BriefingError(
+                f"llama-server not reachable at {self.host} — is the "
+                "com.timurakhtemov.llama-server service running?"
+            ) from exc
+        resp.raise_for_status()
+        return (resp.json()["choices"][0]["message"]["content"] or "").strip()
 
 
 class AnthropicProvider:
@@ -293,6 +357,8 @@ def build_provider(portfolio: str) -> BriefingProvider:
     name = os.environ.get("ANCHOR_BRIEFING_PROVIDER", "ollama").strip().lower()
     if name == "ollama":
         return OllamaProvider()
+    if name in ("llama-server", "llama_server", "llamaserver"):
+        return LlamaServerProvider()
     if name == "anthropic":
         if portfolio == "real":
             raise PrivacyError(
@@ -303,7 +369,8 @@ def build_provider(portfolio: str) -> BriefingProvider:
             )
         return AnthropicProvider()
     raise BriefingError(
-        f"unknown ANCHOR_BRIEFING_PROVIDER {name!r} — expected 'ollama' or 'anthropic'"
+        f"unknown ANCHOR_BRIEFING_PROVIDER {name!r} — expected 'ollama', "
+        "'llama-server' or 'anthropic'"
     )
 
 
@@ -849,9 +916,8 @@ def write_briefing(client, dataset: str, artifact: pd.DataFrame) -> str:
 # --- orchestrator ------------------------------------------------------------------
 
 
-def _check_output(raw: str, marts, context: str, n_news: int):
-    """Parse + validate one provider response. Returns (steps, briefing_md,
-    result); raises ValidationError on any hard failure."""
+def _validate_tour(raw: str, marts, context: str, *, n_news: int):
+    """Parse + hard-validate one model output. Raises ValidationError."""
     try:
         steps = json.loads(raw)["steps"]
     except (json.JSONDecodeError, KeyError, TypeError) as exc:
@@ -870,7 +936,18 @@ def _check_output(raw: str, marts, context: str, n_news: int):
     return steps, briefing_md, result
 
 
-MAX_ATTEMPTS = 2  # one initial call + at most one retry, on ValidationError only
+REJECTION_HEADER = "PREVIOUS ATTEMPT REJECTED"
+
+
+def _with_rejection(context: str, errors: str) -> str:
+    """Append the validator's verdict so a retry corrects instead of re-rolling
+    (at temperature 0.1 a plain re-roll mostly repeats the same mistake)."""
+    return (
+        f"{context}\n\n{REJECTION_HEADER} by the hard validator:\n{errors}\n"
+        "Regenerate the complete tour. Every value in a step's figures[] must "
+        "appear verbatim in that step's narration, and every cited number must "
+        "come from DATA."
+    )
 
 
 def generate(
@@ -879,13 +956,18 @@ def generate(
     client,
     *,
     skip_news: bool = False,
+    max_attempts: int | None = None,
     dry_run: bool = False,
 ) -> dict[str, object]:
     """Full pipeline: guard -> read marts -> news -> packet -> LLM -> validate
-    -> write. Retries the LLM once if validation fails (API errors are not
-    retried). Raises PrivacyError / ValidationError / BriefingError; never
-    writes on failure. `dry_run` validates but skips the write, and returns the
-    steps list (not a count) under "steps"."""
+    -> write. Raises PrivacyError / ValidationError / BriefingError; never
+    writes on failure.
+
+    A tour that fails validation is regenerated up to max_attempts times
+    (ANCHOR_BRIEFING_ATTEMPTS, default 3), each retry carrying the previous
+    attempt's validator errors so the model can correct rather than re-roll.
+    Provider errors are never retried. `dry_run` validates but skips the
+    write, and returns the steps list (not a count) under "steps"."""
     if portfolio not in ("demo", "real"):
         raise ValueError(f"portfolio must be 'demo' or 'real', got {portfolio!r}")
     # The privacy guard fires before ANY I/O: a real-portfolio briefing from a
@@ -904,17 +986,24 @@ def generate(
     marts = read_marts(client, dataset)
     news = [] if skip_news else fetch_news(held_tickers(marts["portfolio_composition"]))
     context = build_context(marts, news)
+    if max_attempts is None:
+        max_attempts = int(os.environ.get("ANCHOR_BRIEFING_ATTEMPTS", DEFAULT_MAX_ATTEMPTS))
 
-    for attempt in range(1, MAX_ATTEMPTS + 1):
-        raw = provider.generate(SYSTEM_PROMPT, context, format_schema=TOUR_SCHEMA)
+    failures: list[str] = []
+    for attempt in range(1, max_attempts + 1):
+        prompt = context if not failures else _with_rejection(context, failures[-1])
+        raw = provider.generate(SYSTEM_PROMPT, prompt, format_schema=TOUR_SCHEMA)
         try:
-            steps, briefing_md, result = _check_output(raw, marts, context, len(news))
+            steps, briefing_md, result = _validate_tour(raw, marts, context, n_news=len(news))
             break
         except ValidationError as exc:
-            if attempt == MAX_ATTEMPTS:
-                raise
+            failures.append(str(exc))
             detail = describe_failure(exc, portfolio)
-            print(f"  attempt {attempt} failed validation, retrying once: {detail}")
+            print(f"  attempt {attempt}/{max_attempts} rejected: {detail}")
+    else:
+        raise ValidationError(
+            f"tour rejected on all {max_attempts} attempts; last: {failures[-1]}"
+        )
 
     as_of = marts["as_of_calendar"]["as_of_date"].iloc[0]
     summary: dict[str, object] = {

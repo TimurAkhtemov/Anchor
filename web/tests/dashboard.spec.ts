@@ -10,7 +10,7 @@ import {
   sectorsFor,
   trendWindow,
 } from "../src/lib/dashboard";
-import { fmtDate } from "../src/lib/format";
+import { fmtDate, fmtSigned } from "../src/lib/format";
 import type { AnchorBundle } from "../src/lib/types";
 
 const bundle = rawBundle as unknown as AnchorBundle;
@@ -168,6 +168,23 @@ test.describe("sections", () => {
       }
       if (p.valuation_source === "source") {
         await expect(row).toContainText("import-valued");
+      }
+    }
+  });
+
+  test("gain since purchase sits under the weight, only where cost basis exists", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    for (const p of bundle.portfolio_composition) {
+      const gain = page.locator(
+        `[data-holding-row="${p.ticker}"] [data-gain-since-purchase]`,
+      );
+      if (p.unrealized_gain_pct === null) {
+        await expect(gain).toHaveCount(0);
+      } else {
+        await expect(gain).toContainText("since purchase");
+        await expect(gain).toContainText(fmtSigned(p.unrealized_gain_pct, "%"));
       }
     }
   });
