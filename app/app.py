@@ -344,7 +344,7 @@ def _render_table_header(horizon_label: str):
     with col2:
         st.markdown("<span style='font-size: 0.8rem; font-weight: 700; color: rgba(148, 163, 184, 0.7); text-transform: uppercase; letter-spacing: 0.05em;'>Market Value</span>", unsafe_allow_html=True)
     with col3:
-        st.markdown(f"<span style='font-size: 0.8rem; font-weight: 700; color: rgba(148, 163, 184, 0.7); text-transform: uppercase; letter-spacing: 0.05em;'>Return ({horizon_label})</span>", unsafe_allow_html=True)
+        st.markdown(f"<span style='font-size: 0.8rem; font-weight: 700; color: rgba(148, 163, 184, 0.7); text-transform: uppercase; letter-spacing: 0.05em;'>Price Return ({horizon_label})</span>", unsafe_allow_html=True)
     with col4:
         st.markdown("<span style='font-size: 0.8rem; font-weight: 700; color: rgba(148, 163, 184, 0.7); text-transform: uppercase; letter-spacing: 0.05em;'>Active Benchmark Diff</span>", unsafe_allow_html=True)
     with col5:
@@ -386,9 +386,15 @@ def _render_holding_row(h, hb, rel_col, lab_col, hkey):
             unsafe_allow_html=True,
         )
     with col2:
+        unrealized_gain = h.get("unrealized_gain_pct")
+        gain_since_purchase = (
+            f" · {ui.colored(ui.pct(unrealized_gain), ui.ret_color(unrealized_gain))} since purchase"
+            if pd.notna(unrealized_gain)
+            else ""
+        )
         st.markdown(
             f"**{ui.money(h['market_value'])}**<br>"
-            f"<span style='color:{ui.SLATE};font-size:0.78rem'>{h['weight_pct']:.1f}% weight</span>",
+            f"<span style='color:{ui.SLATE};font-size:0.78rem'>{h['weight_pct']:.1f}% weight{gain_since_purchase}</span>",
             unsafe_allow_html=True,
         )
     with col3:
