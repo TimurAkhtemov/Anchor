@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from datetime import date, datetime, timezone
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -367,6 +368,112 @@ _CTX = (
 _PAD = " Context filler so the length check passes." * 6
 
 
+# --- 3c. forward-looking guard, retry, dry run ---------------------------------------
+
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+class SequenceProvider(FakeProvider):
+    """Returns successive canned outputs; counts calls."""
+
+    def __init__(self, outputs: list[str]):
+        super().__init__(outputs[0])
+        self.outputs = list(outputs)
+        self.calls = 0
+
+    def generate(self, system, prompt, *, format_schema=None):
+        out = self.outputs[min(self.calls, len(self.outputs) - 1)]
+        self.calls += 1
+        return out
+
+
+def _with_narration(idx: int, text: str) -> str:
+    steps = [dict(s) for s in GOOD_STEPS]
+    steps[idx] = {**steps[idx], "narration": text, "figures": []}
+    return json.dumps({"steps": steps})
+
+
+def test_validate_steps_rejects_prediction():
+    marts, context = _steps_setup()
+    steps = [dict(s) for s in GOOD_STEPS]
+    steps[2] = {**steps[2], "narration": "Technology will provide a near-term catalyst.", "figures": []}
+    result = briefing.validate_steps(steps, marts, context, n_news=0)
+    assert any("step 3" in e and "'will'" in e for e in result.errors)
+
+
+def test_validate_steps_rejects_recommendation():
+    marts, context = _steps_setup()
+    steps = [dict(s) for s in GOOD_STEPS]
+    steps[3] = {**steps[3], "narration": "Given the mix, investors should buy more bonds.", "figures": []}
+    result = briefing.validate_steps(steps, marts, context, n_news=0)
+    assert any("step 4" in e for e in result.errors)
+
+
+def test_forward_look_ignores_sell_off():
+    assert briefing.find_forward_looking("A sell-off in energy weighed on the sector.") == []
+    assert briefing.find_forward_looking("The selloff in energy deepened.") == []
+    assert briefing.find_forward_looking("Investors sell the dip.") != []
+
+
+def test_find_forward_looking_phrases():
+    for text in [
+        "Rates won't move.", "It is going to rally.", "Expected to rise.",
+        "Likely to fall.", "Poised to gain.", "Set to report.",
+        "It could continue higher.", "That may help margins.",
+        "We recommend caution.", "Consider a trim.",
+    ]:
+        assert briefing.find_forward_looking(text), text
+    assert briefing.find_forward_looking("Energy led the month, up +12.64%.") == []
+
+
+def test_september_briefing_flags_only_the_apple_step():
+    steps = json.loads((FIXTURES / "briefing_2026_09_steps.json").read_text())
+    flagged = [s["id"] for s in steps if briefing.find_forward_looking(s["narration"])]
+    assert flagged == [6]
+
+
+def test_generate_retries_once_on_validation_failure():
+    bad = _with_narration(2, "Technology will provide a near-term catalyst.")
+    provider = SequenceProvider([bad, GOOD_TOUR])
+    client = FakeBQClient(_marts())
+    summary = briefing.generate("demo", provider, client, skip_news=True)
+    assert provider.calls == 2
+    assert len(client.loads) == 1
+    assert summary["steps"] == 6
+
+
+def test_generate_fails_after_second_invalid():
+    bad = _with_narration(2, "Technology will provide a near-term catalyst.")
+    provider = SequenceProvider([bad, bad, GOOD_TOUR])
+    client = FakeBQClient(_marts())
+    with pytest.raises(briefing.ValidationError):
+        briefing.generate("demo", provider, client, skip_news=True)
+    assert provider.calls == 2
+    assert client.loads == []
+
+
+def test_generate_does_not_retry_on_provider_error():
+    class Boom(FakeProvider):
+        calls = 0
+
+        def generate(self, system, prompt, *, format_schema=None):
+            Boom.calls += 1
+            raise briefing.BriefingError("api down")
+
+    with pytest.raises(briefing.BriefingError):
+        briefing.generate("demo", Boom(""), FakeBQClient(_marts()), skip_news=True)
+    assert Boom.calls == 1
+
+
+def test_dry_run_does_not_write():
+    provider = FakeProvider(GOOD_TOUR)
+    client = FakeBQClient(_marts())
+    summary = briefing.generate("demo", provider, client, skip_news=True, dry_run=True)
+    assert client.loads == []
+    assert summary["steps"] == GOOD_STEPS
+    assert summary["table"] is None
+
+
 def test_validate_briefing_rejects_empty():
     result = briefing.validate_briefing("   ", _CTX)
     assert not result.ok
@@ -478,3 +585,43 @@ def test_held_tickers_excludes_cash_and_source_valued():
         ]
     )
     assert briefing.held_tickers(composition) == ["AAPL", "BND"]
+
+
+def test_anthropic_provider_request_shape(monkeypatch):
+    """No network: a fake `anthropic` module records the request kwargs."""
+    import sys
+    import types
+
+    seen: dict = {}
+
+    class _Stream:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def get_final_message(self):
+            block = types.SimpleNamespace(type="text", text=' {"steps": []} ')
+            return types.SimpleNamespace(stop_reason="end_turn", content=[block])
+
+    class _Messages:
+        def stream(self, **kwargs):
+            seen.update(kwargs)
+            return _Stream()
+
+    fake = types.ModuleType("anthropic")
+    fake.Anthropic = lambda: types.SimpleNamespace(messages=_Messages())
+    for name in ("AuthenticationError", "APIStatusError", "APIConnectionError"):
+        setattr(fake, name, type(name, (Exception,), {}))
+    monkeypatch.setitem(sys.modules, "anthropic", fake)
+
+    out = briefing.AnthropicProvider(model="claude-sonnet-5-5").generate(
+        "sys", "prompt", format_schema={"type": "object"}
+    )
+    assert out == '{"steps": []}'
+    assert seen["model"] == "claude-sonnet-5-5"
+    assert seen["thinking"] == {"type": "adaptive"}
+    assert seen["output_config"]["effort"] == "medium"
+    assert seen["output_config"]["format"] == {"type": "json_schema", "schema": {"type": "object"}}
+    assert "temperature" not in seen

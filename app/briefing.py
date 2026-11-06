@@ -34,16 +34,15 @@ import pandas as pd
 
 PROJECT = "anchor-495115"
 BRIEFING_TABLE = "copilot_briefing"
-# gemma4:31b (dense) won the post-ship A/B against qwen3:30b-a3b (MoE) on the
-# metric that matters here — verdict/attribution discipline — at ~10x latency,
-# which a pipeline-time artifact can afford. Swap via ANCHOR_BRIEFING_MODEL.
-DEFAULT_MODEL = "gemma4:31b"
+# qwen3.6:35b is the resident local model (shared with other local workloads),
+# so it is the default. Swap via ANCHOR_BRIEFING_MODEL.
+DEFAULT_MODEL = "qwen3.6:35b"
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 # Cloud model for the demo world (docs/briefing_daily_note_design.md, lever D).
 # Deliberately a separate env var from ANCHOR_BRIEFING_MODEL, which stays pinned
 # to the Ollama model — sharing one var would send an Ollama model name to
 # Anthropic the moment the provider switched.
-DEFAULT_ANTHROPIC_MODEL = "claude-opus-4-8"
+DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5-5"  # provisional until the bake-off
 
 # The numeric backbone: five served marts plus the shared trading calendar.
 CONTEXT_TABLES = [
@@ -230,18 +229,18 @@ class AnthropicProvider:
     ) -> str:
         import anthropic  # lazy: cloud path only, never needed by tests or the app deploy
 
-        kwargs: dict = {}
+        # Effort lives inside output_config, next to the structured-output format.
+        output_config: dict = {"effort": "medium"}
         if format_schema is not None:
             # Anthropic structured outputs: the schema constrains the response
             # format (requires additionalProperties: false throughout).
-            kwargs["output_config"] = {
-                "format": {"type": "json_schema", "schema": format_schema}
-            }
-        client = anthropic.Anthropic()  # ANTHROPIC_API_KEY from the environment/.env
+            output_config["format"] = {"type": "json_schema", "schema": format_schema}
+        kwargs: dict = {"output_config": output_config}
+        client = anthropic.Anthropic()  # ANTHROPIC_API_KEY from the process environment
         try:
-            # Opus 4.8 takes no temperature (sampling params are rejected);
-            # adaptive thinking replaces it as the quality lever. Streaming
-            # keeps the request clear of HTTP timeouts at this max_tokens.
+            # Sonnet/Haiku 5.5 reject non-default sampling parameters (no
+            # temperature); adaptive thinking plus effort are the quality
+            # levers. Streaming keeps the request clear of HTTP timeouts.
             with client.messages.stream(
                 model=self.model,
                 max_tokens=self.max_tokens,
@@ -253,7 +252,8 @@ class AnthropicProvider:
                 message = stream.get_final_message()
         except anthropic.AuthenticationError as exc:
             raise BriefingError(
-                "Anthropic auth failed — set ANTHROPIC_API_KEY in .env"
+                "Anthropic auth failed — check ANTHROPIC_API_KEY in the "
+                "environment (or the GitHub Actions secret)"
             ) from exc
         except anthropic.APIStatusError as exc:
             raise BriefingError(
@@ -644,6 +644,24 @@ def validate_briefing(briefing_md: str, context: str) -> ValidationResult:
     return result
 
 
+# The briefing describes; it never predicts or recommends. Case-insensitive,
+# word-boundary phrases. `sell` excludes sell-off/selloff (a description of a
+# past move, not advice).
+_FORWARD_LOOKING_RE = re.compile(
+    r"\b(?:"
+    r"will|won['’]t|going to|expected to|likely to|poised to|set to"
+    r"|(?:should|could|may)\s+(?:rise|fall|continue|benefit|help|provide)"
+    r"|buy|sell(?![-‐‑]?off)|trim|recommend\w*"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def find_forward_looking(text: str) -> list[str]:
+    """Phrases in `text` that read as a prediction or a recommendation."""
+    return [m.group(0) for m in _FORWARD_LOOKING_RE.finditer(text or "")]
+
+
 def validate_steps(
     steps: list[dict], marts: dict[str, pd.DataFrame], context: str, n_news: int
 ) -> ValidationResult:
@@ -697,6 +715,11 @@ def validate_steps(
             result.errors.append(f"step {sid}: narration starts with junk: {narration[:30]!r}")
         if "<think>" in narration.lower():
             result.errors.append(f"step {sid}: narration contains <think> tags")
+        for phrase in find_forward_looking(narration):
+            result.errors.append(
+                f"step {sid}: forward-looking or advisory phrase {phrase!r} "
+                "(describe what happened; never predict or recommend)"
+            )
 
         for figure in step.get("figures") or []:
             if figure not in narration:
@@ -811,16 +834,43 @@ def write_briefing(client, dataset: str, artifact: pd.DataFrame) -> str:
 # --- orchestrator ------------------------------------------------------------------
 
 
+def _check_output(raw: str, marts, context: str, n_news: int):
+    """Parse + validate one provider response. Returns (steps, briefing_md,
+    result); raises ValidationError on any hard failure."""
+    try:
+        steps = json.loads(raw)["steps"]
+    except (json.JSONDecodeError, KeyError, TypeError) as exc:
+        raise ValidationError(f"tour script is not valid JSON with 'steps': {exc}") from exc
+
+    step_result = validate_steps(steps, marts, context, n_news=n_news)
+    if not step_result.ok:
+        raise ValidationError("tour failed validation: " + "; ".join(step_result.errors))
+
+    # The text briefing is assembled from the narrations (one source of truth);
+    # the v1 whole-text checks stay as a belt over the assembled result.
+    briefing_md = assemble_briefing_md(steps)
+    result = validate_briefing(briefing_md, context)
+    if not result.ok:
+        raise ValidationError("briefing failed validation: " + "; ".join(result.errors))
+    return steps, briefing_md, result
+
+
+MAX_ATTEMPTS = 2  # one initial call + at most one retry, on ValidationError only
+
+
 def generate(
     portfolio: str,
     provider: BriefingProvider,
     client,
     *,
     skip_news: bool = False,
+    dry_run: bool = False,
 ) -> dict[str, object]:
     """Full pipeline: guard -> read marts -> news -> packet -> LLM -> validate
-    -> write. Raises PrivacyError / ValidationError / BriefingError; never
-    writes on failure."""
+    -> write. Retries the LLM once if validation fails (API errors are not
+    retried). Raises PrivacyError / ValidationError / BriefingError; never
+    writes on failure. `dry_run` validates but skips the write, and returns the
+    steps list (not a count) under "steps"."""
     if portfolio not in ("demo", "real"):
         raise ValueError(f"portfolio must be 'demo' or 'real', got {portfolio!r}")
     # The privacy guard fires before ANY I/O: a real-portfolio briefing from a
@@ -832,34 +882,24 @@ def generate(
         )
     dataset = "anchor_marts_private" if portfolio == "real" else "anchor_marts"
 
+    # Marts and news are fetched once; only the LLM call is repeated.
     marts = read_marts(client, dataset)
     news = [] if skip_news else fetch_news(held_tickers(marts["portfolio_composition"]))
     context = build_context(marts, news)
-    raw = provider.generate(SYSTEM_PROMPT, context, format_schema=TOUR_SCHEMA)
 
-    try:
-        steps = json.loads(raw)["steps"]
-    except (json.JSONDecodeError, KeyError, TypeError) as exc:
-        raise ValidationError(f"tour script is not valid JSON with 'steps': {exc}") from exc
-
-    step_result = validate_steps(steps, marts, context, n_news=len(news))
-    if not step_result.ok:
-        raise ValidationError("tour failed validation: " + "; ".join(step_result.errors))
-
-    # The text briefing is assembled from the narrations (one source of truth);
-    # the v1 whole-text checks stay as a belt over the assembled result.
-    briefing_md = assemble_briefing_md(steps)
-    result = validate_briefing(briefing_md, context)
-    if not result.ok:
-        raise ValidationError("briefing failed validation: " + "; ".join(result.errors))
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        raw = provider.generate(SYSTEM_PROMPT, context, format_schema=TOUR_SCHEMA)
+        try:
+            steps, briefing_md, result = _check_output(raw, marts, context, len(news))
+            break
+        except ValidationError as exc:
+            if attempt == MAX_ATTEMPTS:
+                raise
+            print(f"  attempt {attempt} failed validation, retrying once: {exc}")
 
     as_of = marts["as_of_calendar"]["as_of_date"].iloc[0]
-    artifact = build_artifact(
-        briefing_md, as_of_date=as_of, provider=provider, news=news, steps=steps
-    )
-    table_id = write_briefing(client, dataset, artifact)
-    return {
-        "table": table_id,
+    summary: dict[str, object] = {
+        "table": None,
         "as_of_date": str(pd.to_datetime(as_of).date()),
         "chars": len(briefing_md),
         "steps": len(steps),
@@ -867,3 +907,11 @@ def generate(
         "model": provider.model,
         "warnings": result.warnings,
     }
+    if dry_run:
+        summary["steps"] = steps
+        return summary
+    artifact = build_artifact(
+        briefing_md, as_of_date=as_of, provider=provider, news=news, steps=steps
+    )
+    summary["table"] = write_briefing(client, dataset, artifact)
+    return summary
