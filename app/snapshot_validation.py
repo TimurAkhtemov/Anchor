@@ -2,32 +2,19 @@
 
 from __future__ import annotations
 
-import csv
 from datetime import date
 from pathlib import Path
 
 import pandas as pd
 
 from app.export_snapshot import TABLES
-from ingestion.holdings_csv import parse_fidelity_positions
+from app.bundle_validation import MAX_SETTLED_AGE_DAYS, TICKER_COLUMNS, allowed_tickers
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-SAMPLE_PORTFOLIO_CSV = REPO_ROOT / "data" / "sample_portfolio.csv"
-BENCHMARK_ETFS_CSV = REPO_ROOT / "transformation" / "seeds" / "benchmark_etfs.csv"
-TICKER_COLUMNS = ("ticker", "holding_ticker", "benchmark_etf", "etf_ticker")
-MAX_SETTLED_AGE_DAYS = 4
+__all__ = ["MAX_SETTLED_AGE_DAYS", "TICKER_COLUMNS", "allowed_tickers", "SnapshotValidationError", "validate_snapshot"]
 
 
 class SnapshotValidationError(ValueError):
     pass
-
-
-def allowed_tickers() -> set[str]:
-    positions = parse_fidelity_positions(SAMPLE_PORTFOLIO_CSV.read_text())
-    tickers = {row["ticker"] for row in positions if row["ticker"]}
-    with BENCHMARK_ETFS_CSV.open(newline="") as source:
-        tickers.update(row["etf_ticker"] for row in csv.DictReader(source))
-    return tickers | {"CASH"}
 
 
 def validate_snapshot(snapshot_dir: Path, today: date | None = None) -> dict[str, int]:

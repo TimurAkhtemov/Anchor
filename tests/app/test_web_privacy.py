@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from tests.app.test_snapshot_privacy import _allowed_tickers
+from app.bundle_validation import allowed_tickers
 
 BUNDLE = Path(__file__).parent.parent.parent / "web" / "public" / "data" / "anchor.json"
 
@@ -17,26 +17,39 @@ def _bundle() -> dict:
 
 def test_web_bundle_contains_only_demo_and_benchmark_tickers():
     bundle = _bundle()
-    allowed = _allowed_tickers()
+    allowed = allowed_tickers()
     seen = {row["ticker"] for row in bundle["portfolio_composition"]}
     seen |= {row["holding_ticker"] for row in bundle["holdings_benchmarks"]}
     seen |= {row["benchmark_etf"] for row in bundle["holdings_benchmarks"]}
     seen |= {row["etf_ticker"] for row in bundle["sector_performance"]}
-    seen |= {item["ticker"] for item in bundle["briefing"]["sources"]}
-    seen |= {
-        step["target"]["key"]
-        for step in bundle["briefing"]["steps"]
-        if step["target"]["kind"] == "holding"
-    }
+    seen |= set(bundle.get("ticker_trend", {}))
+    briefing = bundle.get("briefing")
+    if briefing:
+        seen |= {item["ticker"] for item in briefing["sources"]}
+        seen |= {
+            step["target"]["key"]
+            for step in briefing["steps"]
+            if step["target"]["kind"] == "holding"
+        }
     offenders = {t for t in seen if t} - allowed
     assert not offenders, f"web bundle contains non-demo tickers: {offenders}"
 
 
 def test_web_bundle_carries_a_valid_tour():
     briefing = _bundle()["briefing"]
+    if briefing is None:
+        return  # a stale or missing briefing exports null by design
     assert briefing["steps"], "bundle shipped without a tour script"
     assert briefing["steps"][0]["target"]["kind"] == "regime"
     assert briefing["briefing_md"]
     for step in briefing["steps"]:
         for ref in step["headline_refs"]:
             assert 0 <= ref < len(briefing["sources"])
+
+
+def test_web_bundle_is_demo_and_carries_trends():
+    bundle = _bundle()
+    assert bundle["portfolio"] == "demo"
+    assert bundle["macro_trend"] and bundle["ticker_trend"]
+    for series in bundle["ticker_trend"].values():
+        assert [d for d, _ in series] == sorted(d for d, _ in series)
