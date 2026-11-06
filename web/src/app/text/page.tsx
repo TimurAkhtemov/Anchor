@@ -75,7 +75,7 @@ export default function TextBriefing() {
         </p>
         <p className="mt-4">
           <Link
-            href="/"
+            href="/reading/"
             className="font-display italic text-pencil underline decoration-1 underline-offset-4"
           >
             ← Back to the guided tour

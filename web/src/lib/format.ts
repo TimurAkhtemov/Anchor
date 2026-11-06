@@ -1,4 +1,9 @@
-import type { Horizon } from "./types";
+import type {
+  BenchmarkType,
+  Horizon,
+  RelativeLabel,
+  ReturnHorizon,
+} from "./types";
 
 // Tour steps address indicators by their briefing label (app/briefing.py
 // _INDICATOR_LABELS); the marts key them by indicator_key. Unknown labels
@@ -40,13 +45,57 @@ export function fmtPp(v: number | null): string {
   return `${v > 0 ? "+" : ""}${v.toFixed(2)} pp`;
 }
 
-export function fmtMoney(v: number | null): string {
+export function fmtMoney(
+  v: number | null,
+  { cents = false }: { cents?: boolean } = {},
+): string {
   if (v === null) return "—";
   return v.toLocaleString("en-US", {
     style: "currency",
     currency: "USD",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: cents ? 2 : 0,
+    maximumFractionDigits: cents ? 2 : 0,
   });
+}
+
+/** Two decimals with an explicit sign and a true minus; a zero carries neither. */
+export function fmtSigned(v: number | null, unit = ""): string {
+  if (v === null) return "—";
+  const body = Math.abs(v).toFixed(2);
+  const sign = Number(body) === 0 ? "" : v > 0 ? "+" : "−";
+  return `${sign}${body}${unit}`;
+}
+
+export const RETURN_HORIZON_BUTTON: Record<ReturnHorizon, string> = {
+  "1m": "1 Month",
+  ytd: "YTD",
+  "1y": "1 Year",
+};
+
+export const AXIS_LABEL: Record<BenchmarkType, string> = {
+  sector: "Sector",
+  cap_style: "Cap-style",
+  market: "Market",
+  bond_market: "Bond market",
+  duration: "Duration",
+};
+
+export const RELATIVE_LABEL: Record<RelativeLabel, string> = {
+  ahead: "ahead",
+  behind: "behind",
+  in_line: "in line",
+};
+
+const CLASS_LABEL: Record<string, string> = {
+  equity: "Equities",
+  fixed_income: "Fixed income",
+  commodity: "Commodities",
+  cash: "Cash",
+  alt: "Other",
+};
+
+export function classLabel(assetClass: string): string {
+  return CLASS_LABEL[assetClass] ?? assetClass;
 }
 
 const MONTHS = [

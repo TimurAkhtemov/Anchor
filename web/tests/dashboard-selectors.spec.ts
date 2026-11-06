@@ -94,6 +94,22 @@ test.describe("benchmarksFor", () => {
       "cap_style",
     ]);
   });
+  test("orders axes canonically whatever the mart's row order", () => {
+    const b = fixture({
+      holdings_benchmarks: [
+        { holding_ticker: "X", benchmark_type: "duration" },
+        { holding_ticker: "X", benchmark_type: "cap_style" },
+        { holding_ticker: "X", benchmark_type: "bond_market" },
+        { holding_ticker: "X", benchmark_type: "sector" },
+      ],
+    });
+    expect(benchmarksFor(b, "X").map((r) => r.benchmark_type)).toEqual([
+      "sector",
+      "cap_style",
+      "bond_market",
+      "duration",
+    ]);
+  });
 });
 
 test.describe("rollup", () => {

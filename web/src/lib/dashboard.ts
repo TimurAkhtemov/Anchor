@@ -49,11 +49,18 @@ export function trendWindow(
   return (b.ticker_trend[ticker] ?? []).filter(([d]) => d >= start);
 }
 
+/** A holding's benchmark rows in canonical axis order, so "first" is stable. */
 export function benchmarksFor(
   b: AnchorBundle,
   ticker: string,
 ): HoldingBenchmark[] {
-  return b.holdings_benchmarks.filter((r) => r.holding_ticker === ticker);
+  return b.holdings_benchmarks
+    .filter((r) => r.holding_ticker === ticker)
+    .sort(
+      (x, y) =>
+        AXIS_ORDER.indexOf(x.benchmark_type) -
+        AXIS_ORDER.indexOf(y.benchmark_type),
+    );
 }
 
 function classRank(c: string): number {
