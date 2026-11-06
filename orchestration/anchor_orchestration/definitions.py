@@ -1,11 +1,11 @@
 """Anchor Dagster code location — the Definitions object `dagster dev` loads.
 
 The full pipeline as one asset graph:
-    holdings_demo/FRED/yfinance (bronze) -> staging -> intermediate -> marts (dbt) -> snapshot
+    holdings_demo/FRED/yfinance (bronze) -> staging -> intermediate -> marts (dbt) -> web_bundle
 
 plus a daily post-close schedule over the whole graph (off by default; toggle in
-the UI). v1 runs locally via `make dagster`; Dagster+ Serverless is the follow-up
-for the unattended scheduled story.
+the UI). Runs locally via `make dagster`; the public unattended refresh is the
+GitHub Actions workflow, not this schedule.
 """
 from dagster import (
     DefaultScheduleStatus,
@@ -13,8 +13,6 @@ from dagster import (
     ScheduleDefinition,
     define_asset_job,
 )
-
-import os
 
 from dagster import AssetSelection
 
@@ -25,15 +23,12 @@ from anchor_orchestration.ingestion import (
     ingest_yfinance_asset,
 )
 from anchor_orchestration.resources import bigquery_resource, dbt_resource
-from anchor_orchestration.snapshot import publish_snapshot_asset, snapshot_parquet
+from anchor_orchestration.web_bundle import web_bundle
 
 
 def schedule_default_status() -> DefaultScheduleStatus:
-    return (
-        DefaultScheduleStatus.RUNNING
-        if os.environ.get("DAGSTER_CLOUD_DEPLOYMENT_NAME") == "prod"
-        else DefaultScheduleStatus.STOPPED
-    )
+    # Dagster is a local learning graph; the unattended run is the GitHub Actions public refresh.
+    return DefaultScheduleStatus.STOPPED
 
 # Explicit public/demo selection: future private assets cannot silently enter the schedule.
 DEMO_REFRESH_SELECTION = AssetSelection.assets(
@@ -42,8 +37,7 @@ DEMO_REFRESH_SELECTION = AssetSelection.assets(
     ingest_yfinance_asset,
     source_freshness,
     anchor_dbt_assets,
-    snapshot_parquet,
-    publish_snapshot_asset,
+    web_bundle,
 )
 anchor_refresh_job = define_asset_job("anchor_refresh", selection=DEMO_REFRESH_SELECTION)
 
@@ -64,8 +58,7 @@ defs = Definitions(
         ingest_yfinance_asset,
         anchor_dbt_assets,
         source_freshness,
-        snapshot_parquet,
-        publish_snapshot_asset,
+        web_bundle,
     ],
     jobs=[anchor_refresh_job],
     schedules=[daily_refresh_schedule],

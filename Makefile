@@ -3,13 +3,13 @@
 # The orchestrator (GitHub Actions today, possibly Dagster/Prefect later) is just
 # a trigger over these targets; the pipeline logic lives here, not in YAML. A
 # future orchestrator calls the same `make` targets (or the underlying scripts) —
-# no rewrite. Same decoupling principle as the app's data.py source seam.
+# no rewrite.
 #
 # Auth: ingestion + dbt read BigQuery creds from GOOGLE_APPLICATION_CREDENTIALS
 # (or the local keyfile); FRED ingestion reads FRED_API_KEY. dbt target/profile
 # is resolved by the caller's env (local ~/.dbt vs CI's DBT_PROFILES_DIR=ci).
 
-.PHONY: help ingest deps build-prod ingest-holdings-demo ingest-holdings-real ingest-holdings-real-snaptrade build-private briefing briefing-real snapshot export-web public-refresh refresh dagster run-real run-demo bootstrap-private refresh-private private-status probe-snaptrade install-private-services uninstall-private-services
+.PHONY: help ingest deps build-prod ingest-holdings-demo ingest-holdings-real ingest-holdings-real-snaptrade build-private briefing briefing-real export-web public-refresh refresh dagster dev-web bootstrap-private refresh-private private-status probe-snaptrade install-private-services uninstall-private-services
 
 # dbt engine for LOCAL work = dbt-fusion (the global binary). CI uses dbt-core
 # 1.11 as the stable gate (see .github/workflows/ci.yml). Override with `make DBT=...`.
@@ -51,17 +51,14 @@ briefing:  ## Generate the LLM copilot briefing -> anchor_marts.copilot_briefing
 briefing-real:  ## Same, into anchor_marts_private (local LLM enforced in code)
 	python app/generate_briefing.py --portfolio real
 
-snapshot:  ## Export prod marts -> committed parquet (app/snapshot/)
-	python app/export_snapshot.py
-
 export-web:  ## Export marts + briefing -> web/public/data/anchor.json (the tour surface's bundle)
 	python app/export_web.py
 
 public-refresh:  ## Briefing (only for a new settled date) -> validated web bundle; no-op on holidays
 	python scripts/public_refresh.py
 
-# The briefing now lives inside public-refresh (it runs only for a new settled date and
-# its failure does not block the numbers). `snapshot` stays separate until it is removed.
+# The briefing lives inside public-refresh (it runs only for a new settled date and
+# its failure does not block the numbers).
 refresh: ingest build-prod public-refresh  ## Full daily pipeline: ingest -> build -> briefing + web bundle
 
 dagster:  ## Launch the Dagster UI locally (asset graph at http://localhost:3000)
@@ -73,12 +70,8 @@ dagster:  ## Launch the Dagster UI locally (asset graph at http://localhost:3000
 	PYTHONPATH=orchestration \
 	dagster dev -m anchor_orchestration
 
-run-real: ## Run the Streamlit dashboard locally in real mode (live BigQuery)
-	ANCHOR_PORTFOLIO=real ANCHOR_SOURCE=bigquery ./venv/bin/streamlit run app/app.py \
-		--server.address=127.0.0.1 --server.port=8501
-
-run-demo: ## Run the Streamlit dashboard locally in demo mode (live BigQuery when the keyfile exists)
-	./venv/bin/streamlit run app/app.py
+dev-web:  ## Run the Next.js web app locally against the committed bundle
+	cd web && npm run dev
 
 bootstrap-private:  ## Create the Python 3.12 runtime for private refresh + local dashboard
 	/bin/zsh scripts/bootstrap_private_ops.sh

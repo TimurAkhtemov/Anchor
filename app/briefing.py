@@ -16,8 +16,7 @@ briefing's cited figures against the packet after generation.
 
 Import discipline: module-level imports are stdlib + pandas only. requests,
 yfinance, and google.cloud.bigquery load lazily inside the functions that need
-them, so importing this module never requires the pipeline stack (the Streamlit
-deploy's requirements deliberately lack it).
+them, so importing this module never requires the pipeline stack.
 """
 
 from __future__ import annotations
@@ -753,7 +752,7 @@ def validate_steps(
 
 
 # briefing_md paragraph grouping: macro context / sector context / the portfolio —
-# preserves v1's three-paragraph shape for the Streamlit sidebar and text fallback.
+# preserves v1's three-paragraph shape for the text fallback.
 _PARAGRAPH_GROUPS = (("regime", "indicator"), ("sector",), ("allocation", "holding"))
 
 

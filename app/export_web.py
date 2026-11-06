@@ -2,8 +2,7 @@
 
 The immersive front-end (web/, see docs/immersive_briefing_design.md) is a static
 Next.js app with no backend and no credentials — it renders whatever this export
-committed. Same philosophy and privacy posture as the parquet snapshot: the
-dataset is hardcoded to `anchor_marts`, so the web bundle is demo-only by
+committed. Privacy posture: the dataset is hardcoded to `anchor_marts`, so the web bundle is demo-only by
 construction.
 
 Run locally (needs BigQuery creds) after the briefing step:

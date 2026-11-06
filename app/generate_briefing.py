@@ -3,8 +3,8 @@
 Pipeline-time step (see docs/llm_copilot_briefing_design.md): reads the served
 marts, fetches held-ticker headlines, generates via the configured provider
 (local Ollama by default), validates, then WRITE_TRUNCATEs `copilot_briefing`.
-A failure exits non-zero, which halts `make refresh` before the snapshot
-export — the strict failure policy.
+A failure exits non-zero. scripts/public_refresh.py tolerates that and still
+exports the numbers with a null briefing; the CLI itself stays strict.
 
 Run locally (needs BigQuery creds + Ollama running, unless on the cloud provider):
     python app/generate_briefing.py --portfolio demo

@@ -1,6 +1,6 @@
-"""Web-bundle privacy invariant: web/public/data/anchor.json is the second
-committed artifact the public deploys serve (the parquet snapshot being the
-first) — it must never contain a ticker outside the demo/benchmark universe."""
+"""Web-bundle privacy invariant: web/public/data/anchor.json is the committed
+artifact the public deploy serves — it must never contain a ticker outside the
+demo/benchmark universe."""
 from __future__ import annotations
 
 import json

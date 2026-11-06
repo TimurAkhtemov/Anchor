@@ -1,5 +1,0 @@
-locations:
-  - code_source:
-      package_name: orchestration.anchor_orchestration
-    working_directory: .
-    location_name: anchor
