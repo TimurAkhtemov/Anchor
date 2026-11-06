@@ -126,6 +126,18 @@ def test_same_date_with_briefing_spends_nothing(tmp_path):
     assert path.read_bytes() == before
 
 
+def test_same_date_past_age_limit_fails(tmp_path):
+    path = tmp_path / "anchor.json"
+    _write_bundle(path, NEW)
+    before = path.read_bytes()
+    client = FakeClient(as_of=NEW, briefing_date=NEW)
+    run = Briefing(client)
+    with pytest.raises(BundleValidationError, match="days old"):
+        refresh(client, path, run, today=date(2026, 12, 1))
+    assert run.calls == 0
+    assert path.read_bytes() == before
+
+
 def test_same_date_without_briefing_retries(tmp_path):
     path = tmp_path / "anchor.json"
     _write_bundle(path, NEW, briefing=False)

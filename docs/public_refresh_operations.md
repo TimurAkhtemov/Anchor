@@ -92,7 +92,8 @@ Required repo secrets: `BQ_SA_KEY` (the public service account key), `FRED_API_K
 ### What each outcome means
 
 - **Green, no commit** (holiday, or the date and briefing already published): nothing new,
-  nothing spent. Normal.
+  nothing spent. Normal while the settled date is at most 4 days old; the age check still
+  runs on this path, so a stalled date turns the run red (see below) instead of staying green.
 - **Green, commit with no briefing**: the briefing step failed (log shows
   `WARNING: briefing failed`). Numbers published; the next run (or a manual dispatch)
   retries the briefing because the bundle has none for that date.
@@ -100,7 +101,8 @@ Required repo secrets: `BQ_SA_KEY` (the public service account key), `FRED_API_K
   site keeps the previous bundle. Fix and re-run.
 - **Red at "Briefing + export + validate"**: bundle validation failed (non-demo ticker,
   empty section, or settled date outside 0-4 days old). The committed bundle is untouched.
-  A date that is too old usually means ingestion silently pulled stale prices.
+  A date that is too old (including an unchanged date that has aged past 4 days) means
+  ingestion or the calendar has stalled, for example Yahoo serving old bars. It is not a holiday.
 - **Red at web build or browser tests**: the new bundle broke the site; nothing is
   committed, so the live site is unchanged.
 

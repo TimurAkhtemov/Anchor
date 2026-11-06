@@ -69,6 +69,8 @@ def refresh(
     as_of = _mart_as_of(client)
 
     if not should_generate_briefing(as_of, old):
+        # Re-check age so a stalled settled date goes red instead of looking like a holiday.
+        validate_bundle(old, today=today)
         print(f"Bundle already at {as_of} with a briefing; nothing to do.")
         return RefreshResult(changed=False, as_of=as_of, briefing_status="reused")
 
