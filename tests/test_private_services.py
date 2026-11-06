@@ -27,15 +27,15 @@ def test_dashboard_binds_loopback_only(tmp_path):
 
     assert args == [
         str(tmp_path / "venv" / "bin" / "python"),
-        "-m",
-        "http.server",
+        str(tmp_path / "scripts" / "private_static_server.py"),
         "8501",
-        "--bind",
-        "127.0.0.1",
-        "--directory",
         str(tmp_path / "var" / "private_web" / "current"),
     ]
     assert not any("streamlit" in arg for arg in args)
+    assert "http.server" not in args, "the plain server does no Host check"
+    # The bind address lives in the server script; its tests prove it serves loopback only.
+    script = (REPO_ROOT / "scripts" / "private_static_server.py").read_text()
+    assert '("127.0.0.1", port)' in script and "0.0.0.0" not in script
     assert dashboard["KeepAlive"] is True
 
 

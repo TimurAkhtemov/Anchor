@@ -71,15 +71,12 @@ def build_plists(
         "Label": DASHBOARD_LABEL,
         # A static file server holds no secrets. It re-resolves the `current` symlink
         # per request, so a new build needs no restart, and until the first build it
-        # answers 404 instead of crash-looping.
+        # answers 404 instead of crash-looping. It also refuses foreign Host headers
+        # (DNS rebinding), which `python -m http.server` does not.
         "ProgramArguments": [
             str(repo / "venv" / "bin" / "python"),
-            "-m",
-            "http.server",
+            str(repo / "scripts" / "private_static_server.py"),
             "8501",
-            "--bind",
-            "127.0.0.1",
-            "--directory",
             str(repo / "var" / "private_web" / "current"),
         ],
         "WorkingDirectory": str(repo),
