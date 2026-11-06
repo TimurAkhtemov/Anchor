@@ -7,7 +7,7 @@ import {
   resolveStepFocus,
 } from "../src/lib/resolve";
 import type {
-  AnchorBundle,
+  TourBundle,
   HoldingBenchmark,
   RelativeLabel,
   TourStep,
@@ -19,8 +19,8 @@ import frozenJson from "./fixtures/anchor-2026-07.json";
 // changes on every refresh, so only invariants may be asserted against it.
 // `frozen` is a pinned copy of the 2026-07-08 export: exact expectations live
 // here, where a data refresh can't invalidate them.
-const bundle = bundleJson as unknown as AnchorBundle;
-const frozen = frozenJson as unknown as AnchorBundle;
+const bundle = bundleJson as unknown as TourBundle;
+const frozen = frozenJson as unknown as TourBundle;
 
 test.describe("parseFigure", () => {
   test("parses % and pp display strings", () => {

@@ -38,7 +38,7 @@ test("tour renders, carries every script step, and spotlights on scroll", async 
 test("the plain-text fallback carries the assembled briefing", async ({
   page,
 }) => {
-  await page.goto("/text");
+  await page.goto("/text/");
   await expect(
     page.getByText(bundle.briefing.briefing_md.split("\n\n")[0].slice(0, 60)),
   ).toBeVisible();

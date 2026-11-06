@@ -3,6 +3,7 @@
 
 import type {
   AnchorBundle,
+  TourBundle,
   BenchmarkType,
   HoldingBenchmark,
   Horizon,
@@ -182,7 +183,7 @@ const KIND_TO_SCENE: Record<TargetKind, SceneKey> = {
   holding: "holdings",
 };
 
-export function buildTourModel(bundle: AnchorBundle): TourModel {
+export function buildTourModel(bundle: TourBundle): TourModel {
   const { sources } = bundle.briefing;
   const steps: ResolvedStep[] = bundle.briefing.steps.map((step) => ({
     ...step,

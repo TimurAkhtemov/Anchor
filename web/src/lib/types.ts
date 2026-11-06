@@ -2,6 +2,7 @@
 // Every numeric field is `number | null`: the exporter maps NaN -> null.
 
 export type Horizon = "daily" | "1m" | "ytd" | "1y";
+export type ReturnHorizon = "1m" | "ytd" | "1y";
 export type TargetKind =
   | "regime"
   | "indicator"
@@ -152,14 +153,21 @@ export interface Briefing {
   model: string;
 }
 
+// Series are [ISO date, value] pairs, ascending by date.
+export type TrendSeries = [string, number][];
+
 export interface AnchorBundle {
+  portfolio: "demo" | "real";
   as_of_calendar: AsOfCalendar;
   macro_regime: MacroRegime;
   macro_indicators: MacroIndicator[];
   sector_performance: SectorPerformance[];
   portfolio_composition: PortfolioPosition[];
   holdings_benchmarks: HoldingBenchmark[];
-  briefing: Briefing;
+  macro_trend: Record<string, TrendSeries>;
+  ticker_trend: Record<string, TrendSeries>;
+  // Null when the briefing is missing or older than the market data.
+  briefing: Briefing | null;
 }
 
 // ---- Resolved tour model (computed at build time in page.tsx) ----
@@ -177,7 +185,10 @@ export interface ResolvedStep extends TourStep {
   headlines: Source[];
 }
 
+// A bundle whose briefing is present: the tour needs one.
+export type TourBundle = AnchorBundle & { briefing: Briefing };
+
 export interface TourModel {
   steps: ResolvedStep[];
-  bundle: AnchorBundle;
+  bundle: TourBundle;
 }
