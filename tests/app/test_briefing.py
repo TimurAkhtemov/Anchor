@@ -703,7 +703,9 @@ def test_anthropic_provider_request_shape(monkeypatch):
             return _Stream()
 
     fake = types.ModuleType("anthropic")
-    fake.Anthropic = lambda: types.SimpleNamespace(messages=_Messages())
+    fake.Anthropic = lambda: types.SimpleNamespace(
+        beta=types.SimpleNamespace(messages=_Messages())
+    )
     for name in ("AuthenticationError", "APIStatusError", "APIConnectionError"):
         setattr(fake, name, type(name, (Exception,), {}))
     monkeypatch.setitem(sys.modules, "anthropic", fake)
@@ -721,6 +723,8 @@ def test_anthropic_provider_request_shape(monkeypatch):
     ]
     assert seen["model"] == "claude-sonnet-5-5"
     assert seen["thinking"] == {"type": "adaptive"}
+    assert seen["betas"] == ["server-side-fallback-2026-07-01"]
+    assert seen["fallbacks"] == "default"
     assert seen["output_config"]["effort"] == "medium"
     assert seen["output_config"]["format"] == {"type": "json_schema", "schema": {"type": "object"}}
     assert "temperature" not in seen

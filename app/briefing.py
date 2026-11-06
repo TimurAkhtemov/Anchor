@@ -321,12 +321,18 @@ class AnthropicProvider:
             # Sonnet/Haiku 5.5 reject non-default sampling parameters (no
             # temperature); adaptive thinking plus effort are the quality
             # levers. Streaming keeps the request clear of HTTP timeouts.
-            with client.messages.stream(
+            # Server-side refusal fallback: a declined request is re-run on
+            # Anthropic's recommended substitute inside the same call, so a
+            # classifier false positive costs a retry, not the day's briefing.
+            # The scalar "default" form needs exactly this beta header.
+            with client.beta.messages.stream(
                 model=self.model,
                 max_tokens=self.max_tokens,
                 thinking={"type": "adaptive"},
                 system=system,
                 messages=[{"role": "user", "content": prompt}],
+                betas=["server-side-fallback-2026-07-01"],
+                fallbacks="default",
                 **kwargs,
             ) as stream:
                 message = stream.get_final_message()
@@ -356,6 +362,11 @@ class AnthropicProvider:
             )
         if message.stop_reason == "refusal":
             raise BriefingError("Anthropic declined the request (stop_reason=refusal)")
+        served_by = getattr(message, "model", None)
+        if served_by and served_by != self.model:
+            # The fallback model answered; record it so the artifact is honest.
+            print(f"  note: {self.model} declined, served by {served_by}")
+            self.model = served_by
         text = "".join(block.text for block in message.content if block.type == "text")
         return text.strip()
 
