@@ -31,6 +31,7 @@ WEB_DIR = REPO_ROOT / "web"
 PRIVATE_ROOT = VAR_DIR / "private_web"
 BUNDLE_PATH = PRIVATE_ROOT / "anchor.json"
 FAILURE_LOG = "last_build_failure.log"
+BUILD_TIMEOUT_SECONDS = 600
 PAGES = ("index.html", "reading/index.html", "text/index.html")
 
 # Anything generated, test-only, or environment-specific stays behind. The real
@@ -111,17 +112,29 @@ def _build_env(workspace: Path, bundle_path: Path) -> dict[str, str]:
 
 
 def _run_next_build(npm: str, workspace: Path, bundle_path: Path, root: Path) -> None:
-    result = subprocess.run(
-        (npm, "run", "build"),
-        cwd=workspace,
-        env=_build_env(workspace, bundle_path),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        errors="replace",
-        check=False,
-    )
     failure_log = root / FAILURE_LOG
+    try:
+        result = subprocess.run(
+            (npm, "run", "build"),
+            cwd=workspace,
+            env=_build_env(workspace, bundle_path),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            errors="replace",
+            check=False,
+            timeout=BUILD_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        # A hung build would hold the refresh lock and make later runs look "already running".
+        partial = exc.stdout
+        if isinstance(partial, bytes):
+            partial = partial.decode(errors="replace")
+        failure_log.touch(mode=0o600, exist_ok=True)
+        failure_log.write_text(partial or "")
+        raise SiteBuildError(
+            f"next build timed out after {BUILD_TIMEOUT_SECONDS}s; output kept in {failure_log}"
+        ) from None
     if result.returncode:
         # Beside the bundle, under the same protection, and not in the service logs.
         failure_log.touch(mode=0o600, exist_ok=True)

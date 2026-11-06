@@ -21,7 +21,14 @@ PAGES = ("index.html", "reading/index.html", "text/index.html")
 class FakeRun:
     """Stands in for subprocess.run: `cp` clones, `npm run build` writes out/."""
 
-    def __init__(self, page: str = GOOD_PAGE, returncode: int = 0, output: str = "Route (app)"):
+    def __init__(
+        self,
+        page: str = GOOD_PAGE,
+        returncode: int = 0,
+        output: str = "Route (app)",
+        hang: bool = False,
+    ):
+        self.hang = hang
         self.page = page
         self.returncode = returncode
         self.output = output
@@ -39,6 +46,7 @@ class FakeRun:
                 "command": command,
                 "cwd": cwd,
                 "env": kwargs["env"],
+                "timeout": kwargs.get("timeout"),
                 "listing": {p.name for p in cwd.iterdir()},
                 "has_demo_bundle": (cwd / "public" / "data").exists(),
             }
@@ -47,6 +55,8 @@ class FakeRun:
             target = cwd / "out" / page
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(self.page)
+        if self.hang:
+            raise subprocess.TimeoutExpired(command, kwargs["timeout"], output=b"partial output")
         return subprocess.CompletedProcess(command, self.returncode, stdout=self.output)
 
 
@@ -117,6 +127,19 @@ def test_failed_build_keeps_current_symlink(env, monkeypatch):
     assert _builds(env["root"]) == [good.name], "partial build not removed"
     assert not list(env["root"].glob("work-*"))
     assert (env["root"] / "current" / "index.html").read_text() == GOOD_PAGE
+
+
+def test_hung_build_times_out_and_keeps_current(env, monkeypatch):
+    _use(monkeypatch, FakeRun())
+    good = build_private_site(env["bundle"], env["root"])
+    fake = _use(monkeypatch, FakeRun(hang=True))
+    with pytest.raises(SiteBuildError, match="timed out"):
+        build_private_site(env["bundle"], env["root"])
+    assert fake.build_calls[0]["timeout"] == 600
+    assert os.readlink(env["root"] / "current") == good.name
+    assert _builds(env["root"]) == [good.name], "partial build not removed"
+    assert not list(env["root"].glob("work-*"))
+    assert (env["root"] / "last_build_failure.log").read_text() == "partial output"
 
 
 def test_failed_first_build_leaves_no_current(env, monkeypatch):
