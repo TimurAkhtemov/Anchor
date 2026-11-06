@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import stat
 
 import pandas as pd
 import pytest
@@ -122,3 +123,72 @@ def test_missing_briefing_table_exports_null(tmp_path, mode):
     out = tmp_path / "b.json"
     run_export(FakeClient(briefing=mode), out)
     assert json.loads(out.read_text())["briefing"] is None
+
+
+def test_real_bundle_is_owner_only():
+    out = export_web.REPO_ROOT / "var" / "test-bundle-mode" / "anchor.json"
+    try:
+        run_export(FakeClient(), out, portfolio="real")
+        assert stat.S_IMODE(out.stat().st_mode) == 0o600
+    finally:
+        out.unlink(missing_ok=True)
+        out.parent.rmdir()
+
+
+@pytest.fixture
+def cli(monkeypatch):
+    """main() with BigQuery replaced; the list records every client constructed."""
+    from google.cloud import bigquery
+
+    constructed: list[FakeClient] = []
+
+    def make_client(**_kwargs):
+        constructed.append(FakeClient())
+        return constructed[-1]
+
+    monkeypatch.setattr(bigquery, "Client", make_client)
+    return constructed
+
+
+def _record_export(monkeypatch) -> list[tuple]:
+    calls: list[tuple] = []
+
+    def record(client, out_path, portfolio):
+        calls.append((out_path, portfolio))
+        return {"as_of_calendar": 1}
+
+    monkeypatch.setattr(export_web, "export_web", record)
+    return calls
+
+
+def test_cli_real_defaults_to_the_private_path(cli, monkeypatch):
+    calls = _record_export(monkeypatch)
+    export_web.main(["--portfolio", "real"])
+    assert calls == [
+        (export_web.REPO_ROOT / "var" / "private_web" / "anchor.json", "real")
+    ]
+
+
+def test_cli_defaults_to_the_demo_bundle(cli, monkeypatch):
+    calls = _record_export(monkeypatch)
+    export_web.main([])
+    assert calls == [(BUNDLE_PATH, "demo")]
+
+
+def test_cli_out_overrides_the_path(cli, monkeypatch, tmp_path):
+    calls = _record_export(monkeypatch)
+    export_web.main(["--out", str(tmp_path / "b.json")])
+    assert calls == [(tmp_path / "b.json", "demo")]
+
+
+def test_cli_refuses_real_on_the_public_path_before_any_client(cli):
+    with pytest.raises(BundlePrivacyError):
+        export_web.main(["--portfolio", "real", "--out", str(BUNDLE_PATH)])
+    assert cli == []
+
+
+def test_cli_prints_counts_not_holdings(cli, tmp_path, capsys):
+    export_web.main(["--out", str(tmp_path / "b.json")])
+    printed = capsys.readouterr().out
+    assert "ticker_trend" in printed  # the section's name and its row count
+    assert "SPY" not in printed

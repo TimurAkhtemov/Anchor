@@ -73,10 +73,10 @@ dagster:  ## Launch the Dagster UI locally (asset graph at http://localhost:3000
 dev-web:  ## Run the Next.js web app locally against the committed bundle
 	cd web && npm run dev
 
-bootstrap-private:  ## Create the Python 3.12 runtime for private refresh + local dashboard
+bootstrap-private:  ## Create the Python 3.12 runtime and install web/node_modules for the private site build
 	/bin/zsh scripts/bootstrap_private_ops.sh
 
-refresh-private:  ## SnapTrade -> market data -> private marts -> local briefing
+refresh-private:  ## SnapTrade -> market data -> private marts -> local briefing -> private bundle + site (var/ only)
 	$(PRIVATE_PYTHON) scripts/private_daily.py refresh
 
 private-status:  ## Show the last private background refresh status
@@ -85,7 +85,7 @@ private-status:  ## Show the last private background refresh status
 probe-snaptrade:  ## Read-only SnapTrade connectivity check; does not write holdings
 	$(PRIVATE_PYTHON) scripts/private_daily.py probe-snaptrade
 
-install-private-services:  ## Install weekday refresh + localhost dashboard LaunchAgents
+install-private-services:  ## Install weekday refresh + static site on 127.0.0.1:8501 LaunchAgents (resolves npm now)
 	$(PRIVATE_PYTHON) scripts/private_services.py install
 
 uninstall-private-services:  ## Stop and remove both private LaunchAgents

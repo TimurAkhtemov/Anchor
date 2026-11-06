@@ -65,7 +65,8 @@ def main() -> None:
             skip_news=args.no_news, dry_run=args.dry_run,
         )
     except briefing.BriefingError as exc:
-        print(f"briefing generation failed: {exc}", file=sys.stderr)
+        detail = briefing.describe_failure(exc, args.portfolio)
+        print(f"briefing generation failed: {detail}", file=sys.stderr)
         sys.exit(1)
 
     if args.dry_run:
@@ -78,7 +79,7 @@ def main() -> None:
         )
         return
 
-    for warning in summary["warnings"]:
+    for warning in briefing.describe_warnings(summary["warnings"], args.portfolio):
         print(f"  WARNING (numeric audit): {warning}")
     print(
         f"  wrote {summary['table']} — as_of {summary['as_of_date']}, "

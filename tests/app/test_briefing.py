@@ -6,7 +6,10 @@ numbers get into the prompt / out of the model" a deterministic test.
 """
 from __future__ import annotations
 
+import importlib
 import json
+import logging
+import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -463,6 +466,91 @@ def test_generate_does_not_retry_on_provider_error():
     with pytest.raises(briefing.BriefingError):
         briefing.generate("demo", Boom(""), FakeBQClient(_marts()), skip_news=True)
     assert Boom.calls == 1
+
+
+def test_real_retry_log_withholds_validation_detail(capsys):
+    """Validation errors quote tickers, figures, and narration, and the real
+    portfolio's stdout is a LaunchAgent log file."""
+    bad = _with_narration(2, "Technology will provide a near-term catalyst.")
+    provider = SequenceProvider([bad, GOOD_TOUR])
+    briefing.generate("real", provider, FakeBQClient(_marts()), skip_news=True)
+    printed = capsys.readouterr().out
+    assert "retrying once" in printed
+    assert "step 3" not in printed and "will" not in printed
+
+
+def test_demo_retry_log_keeps_validation_detail(capsys):
+    bad = _with_narration(2, "Technology will provide a near-term catalyst.")
+    provider = SequenceProvider([bad, GOOD_TOUR])
+    briefing.generate("demo", provider, FakeBQClient(_marts()), skip_news=True)
+    assert "step 3" in capsys.readouterr().out
+
+
+def test_describe_failure_only_withholds_real_validation_errors():
+    secret = briefing.ValidationError("step 3: holding key 'ZZPRIVATE' not in the packet")
+    assert "ZZPRIVATE" not in briefing.describe_failure(secret, "real")
+    assert "ZZPRIVATE" in briefing.describe_failure(secret, "demo")
+    # Provider failures carry the reason an operator needs, and no portfolio data.
+    down = briefing.BriefingError("Ollama not reachable")
+    assert "Ollama not reachable" in briefing.describe_failure(down, "real")
+
+
+def test_describe_warnings_counts_for_real():
+    warnings = ["cited '12.5%' not found in the DATA packet"]
+    assert "12.5" not in " ".join(briefing.describe_warnings(warnings, "real"))
+    assert "1 " in briefing.describe_warnings(warnings, "real")[0]
+    assert briefing.describe_warnings(warnings, "demo") == warnings
+    assert briefing.describe_warnings([], "real") == []
+
+
+def test_real_generate_silences_yfinance_logger(monkeypatch):
+    """yfinance logs fetch failures with the ticker in the message."""
+    logger = logging.getLogger("yfinance")
+    monkeypatch.setattr(logger, "level", logging.NOTSET)
+    briefing.generate("real", FakeProvider(GOOD_TOUR), FakeBQClient(_marts()), skip_news=True)
+    assert logger.level == logging.CRITICAL
+
+
+@pytest.fixture
+def briefing_cli(monkeypatch):
+    """app/generate_briefing.py's main(), which imports `briefing` as a top-level module."""
+    monkeypatch.syspath_prepend(str(Path(briefing.__file__).parent))
+    module = importlib.import_module("generate_briefing")
+    inner = module.briefing
+    monkeypatch.setattr(inner, "build_provider", lambda _portfolio: object())
+    monkeypatch.setattr(inner, "build_bigquery_client", lambda: object())
+    monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)
+    monkeypatch.setattr(sys, "argv", ["generate_briefing.py", "--portfolio", "real"])
+    return module, inner
+
+
+def test_cli_failure_withholds_real_validation_detail(briefing_cli, monkeypatch, capsys):
+    module, inner = briefing_cli
+
+    def fail(*_a, **_k):
+        raise inner.ValidationError("step 3: holding key 'ZZPRIVATE' not in the packet")
+
+    monkeypatch.setattr(inner, "generate", fail)
+    with pytest.raises(SystemExit) as caught:
+        module.main()
+    assert caught.value.code == 1
+    streams = capsys.readouterr()
+    assert "briefing generation failed" in streams.err
+    assert "ZZPRIVATE" not in streams.out + streams.err
+
+
+def test_cli_success_withholds_real_audit_figures(briefing_cli, monkeypatch, capsys):
+    module, inner = briefing_cli
+    summary = {
+        "warnings": ["cited '12.5%' not found in the DATA packet"],
+        "table": "t", "as_of_date": "2026-11-05", "steps": 6, "chars": 900,
+        "headlines": 0, "model": "m",
+    }
+    monkeypatch.setattr(inner, "generate", lambda *_a, **_k: summary)
+    module.main()
+    printed = capsys.readouterr().out
+    assert "WARNING (numeric audit)" in printed
+    assert "12.5" not in printed
 
 
 def test_dry_run_does_not_write():

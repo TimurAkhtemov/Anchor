@@ -22,6 +22,7 @@ them, so importing this module never requires the pipeline stack.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from dataclasses import dataclass, field
@@ -138,6 +139,21 @@ class PrivacyError(BriefingError):
 
 class ValidationError(BriefingError):
     """The generated briefing failed a hard validation check; nothing was written."""
+
+
+def describe_failure(exc: Exception, portfolio: str) -> str:
+    """What may be printed about `exc`. Validation errors quote tickers, figures,
+    and narration, and the real portfolio's stdout/stderr are service log files."""
+    if portfolio == "real" and isinstance(exc, ValidationError):
+        return "validation failed (detail withheld for the real portfolio)"
+    return str(exc)
+
+
+def describe_warnings(warnings: list[str], portfolio: str) -> list[str]:
+    """Audit warnings cite figures from the briefing, so the real portfolio logs a count."""
+    if portfolio == "real" and warnings:
+        return [f"{len(warnings)} cited figures not grounded (detail withheld)"]
+    return warnings
 
 
 # --- provider seam ------------------------------------------------------------
@@ -880,6 +896,9 @@ def generate(
             f"{provider.name!r} (is_local=False) — see docs/llm_copilot_briefing_design.md"
         )
     dataset = "anchor_marts_private" if portfolio == "real" else "anchor_marts"
+    if portfolio == "real":
+        # yfinance logs fetch failures with the ticker in the message.
+        logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 
     # Marts and news are fetched once; only the LLM call is repeated.
     marts = read_marts(client, dataset)
@@ -894,7 +913,8 @@ def generate(
         except ValidationError as exc:
             if attempt == MAX_ATTEMPTS:
                 raise
-            print(f"  attempt {attempt} failed validation, retrying once: {exc}")
+            detail = describe_failure(exc, portfolio)
+            print(f"  attempt {attempt} failed validation, retrying once: {detail}")
 
     as_of = marts["as_of_calendar"]["as_of_date"].iloc[0]
     summary: dict[str, object] = {
