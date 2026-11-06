@@ -187,7 +187,7 @@ function HoldingRow({
   return (
     <li
       data-holding-row={p.ticker}
-      className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-b border-rule py-[11px] lg:grid-cols-[minmax(0,1.9fr)_104px_74px_minmax(0,2.3fr)_110px] lg:gap-[18px]"
+      className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-b border-rule py-[11px] lg:grid-cols-[minmax(0,1.8fr)_150px_74px_minmax(0,2.2fr)_110px] lg:gap-[18px]"
     >
       <div>
         <span className="font-data text-[13.5px] font-medium">{p.ticker}</span>{" "}
@@ -200,21 +200,22 @@ function HoldingRow({
         </div>
         <div className="text-[12.5px] text-ink-muted">
           {weight} weight
-          {p.unrealized_gain_pct !== null && (
-            <span data-gain-since-purchase>
-              {" "}
-              ·{" "}
-              <span className={returnTone(p.unrealized_gain_pct)}>
-                {fmtSigned(p.unrealized_gain_pct, "%")}
-              </span>{" "}
-              since purchase
-            </span>
-          )}
           <span className={`lg:hidden ${returnTone(value)}`}>
             {" "}
             · {fmtSigned(value, "%")}
           </span>
         </div>
+        {p.unrealized_gain_pct !== null && (
+          <div
+            data-gain-since-purchase
+            className="whitespace-nowrap text-[12.5px] text-ink-muted"
+          >
+            <span className={`font-data ${returnTone(p.unrealized_gain_pct)}`}>
+              {fmtSigned(p.unrealized_gain_pct, "%")}
+            </span>{" "}
+            since purchase
+          </div>
+        )}
       </div>
       <div
         className={`hidden text-right font-data text-[13.5px] tabular-nums lg:block ${returnTone(value)}`}
