@@ -7,7 +7,7 @@ import { useTour } from "../TourContext";
  *  and the three state chips. */
 export function HeroScene() {
   const { model } = useTour();
-  const { macro_regime, as_of_calendar } = model.bundle;
+  const { macro_regime, as_of_calendar, portfolio } = model.bundle;
 
   return (
     <SceneShell scene="hero">
@@ -17,7 +17,7 @@ export function HeroScene() {
             Anchor · Morning Briefing
           </p>
           <p className="font-data text-[0.6875rem] uppercase tracking-[0.15em] text-ink-muted">
-            {fmtDate(as_of_calendar.as_of_date)} · demo portfolio
+            {fmtDate(as_of_calendar.as_of_date)} · {portfolio === "demo" ? "demo portfolio" : "private portfolio"}
           </p>
         </header>
 

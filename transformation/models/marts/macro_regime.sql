@@ -34,9 +34,9 @@ stated as (
 
     select
         *,
-        {{ three_way_state('fed_funds_delta_3mo', var('regime_rate_threshold_pp'), 'rising', 'easing', 'steady') }} as rates_state,
-        {{ three_way_state('inflation_delta_3mo', var('regime_inflation_threshold_pp'), 'rising', 'cooling', 'stable') }} as inflation_state,
-        {{ three_way_state('unemployment_delta_3mo', var('regime_labor_threshold_pp'), 'loosening', 'tightening', 'stable') }} as labor_state
+        {{ three_way_state('fed_funds_delta_3mo', var('regime_rate_threshold_pp'), 'rising', 'easing', 'steady', inclusive=true) }} as rates_state,
+        {{ three_way_state('inflation_delta_3mo', var('regime_inflation_threshold_pp'), 'rising', 'cooling', 'stable', inclusive=true) }} as inflation_state,
+        {{ three_way_state('unemployment_delta_3mo', var('regime_labor_threshold_pp'), 'loosening', 'tightening', 'stable', inclusive=true) }} as labor_state
     from pivoted
 
 )

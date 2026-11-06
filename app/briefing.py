@@ -16,13 +16,13 @@ briefing's cited figures against the packet after generation.
 
 Import discipline: module-level imports are stdlib + pandas only. requests,
 yfinance, and google.cloud.bigquery load lazily inside the functions that need
-them, so importing this module never requires the pipeline stack (the Streamlit
-deploy's requirements deliberately lack it).
+them, so importing this module never requires the pipeline stack.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import sys
@@ -35,10 +35,9 @@ import pandas as pd
 
 PROJECT = "anchor-495115"
 BRIEFING_TABLE = "copilot_briefing"
-# gemma4:31b (dense) won the post-ship A/B against qwen3:30b-a3b (MoE) on the
-# metric that matters here — verdict/attribution discipline — at ~10x latency,
-# which a pipeline-time artifact can afford. Swap via ANCHOR_BRIEFING_MODEL.
-DEFAULT_MODEL = "gemma4:31b"
+# qwen3.6:35b is the resident local model (shared with other local workloads),
+# so it is the default. Swap via ANCHOR_BRIEFING_MODEL.
+DEFAULT_MODEL = "qwen3.6:35b"
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 # llama.cpp's llama-server (the resident local Qwen service), OpenAI-compatible.
 # It serves exactly one model and ignores the request's model name; the name
@@ -51,7 +50,7 @@ DEFAULT_MAX_ATTEMPTS = 3
 # Deliberately a separate env var from ANCHOR_BRIEFING_MODEL, which stays pinned
 # to the Ollama model — sharing one var would send an Ollama model name to
 # Anthropic the moment the provider switched.
-DEFAULT_ANTHROPIC_MODEL = "claude-opus-4-8"
+DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5-5"  # provisional until the bake-off
 
 # The numeric backbone: five served marts plus the shared trading calendar.
 CONTEXT_TABLES = [
@@ -148,6 +147,21 @@ class PrivacyError(BriefingError):
 
 class ValidationError(BriefingError):
     """The generated briefing failed a hard validation check; nothing was written."""
+
+
+def describe_failure(exc: Exception, portfolio: str) -> str:
+    """What may be printed about `exc`. Validation errors quote tickers, figures,
+    and narration, and the real portfolio's stdout/stderr are service log files."""
+    if portfolio == "real" and isinstance(exc, ValidationError):
+        return "validation failed (detail withheld for the real portfolio)"
+    return str(exc)
+
+
+def describe_warnings(warnings: list[str], portfolio: str) -> list[str]:
+    """Audit warnings cite figures from the briefing, so the real portfolio logs a count."""
+    if portfolio == "real" and warnings:
+        return [f"{len(warnings)} cited figures not grounded (detail withheld)"]
+    return warnings
 
 
 # --- provider seam ------------------------------------------------------------
@@ -288,36 +302,44 @@ class AnthropicProvider:
             "ANCHOR_BRIEFING_CLOUD_MODEL", DEFAULT_ANTHROPIC_MODEL
         )
         self.max_tokens = max_tokens
+        self.usage: list[dict[str, int]] = []  # one entry per call, for cost reporting
 
     def generate(
         self, system: str, prompt: str, *, format_schema: dict | None = None
     ) -> str:
         import anthropic  # lazy: cloud path only, never needed by tests or the app deploy
 
-        kwargs: dict = {}
+        # Effort lives inside output_config, next to the structured-output format.
+        output_config: dict = {"effort": "medium"}
         if format_schema is not None:
             # Anthropic structured outputs: the schema constrains the response
             # format (requires additionalProperties: false throughout).
-            kwargs["output_config"] = {
-                "format": {"type": "json_schema", "schema": format_schema}
-            }
-        client = anthropic.Anthropic()  # ANTHROPIC_API_KEY from the environment/.env
+            output_config["format"] = {"type": "json_schema", "schema": format_schema}
+        kwargs: dict = {"output_config": output_config}
+        client = anthropic.Anthropic()  # ANTHROPIC_API_KEY from the process environment
         try:
-            # Opus 4.8 takes no temperature (sampling params are rejected);
-            # adaptive thinking replaces it as the quality lever. Streaming
-            # keeps the request clear of HTTP timeouts at this max_tokens.
-            with client.messages.stream(
+            # Sonnet/Haiku 5.5 reject non-default sampling parameters (no
+            # temperature); adaptive thinking plus effort are the quality
+            # levers. Streaming keeps the request clear of HTTP timeouts.
+            # Server-side refusal fallback: a declined request is re-run on
+            # Anthropic's recommended substitute inside the same call, so a
+            # classifier false positive costs a retry, not the day's briefing.
+            # The scalar "default" form needs exactly this beta header.
+            with client.beta.messages.stream(
                 model=self.model,
                 max_tokens=self.max_tokens,
                 thinking={"type": "adaptive"},
                 system=system,
                 messages=[{"role": "user", "content": prompt}],
+                betas=["server-side-fallback-2026-07-01"],
+                fallbacks="default",
                 **kwargs,
             ) as stream:
                 message = stream.get_final_message()
         except anthropic.AuthenticationError as exc:
             raise BriefingError(
-                "Anthropic auth failed — set ANTHROPIC_API_KEY in .env"
+                "Anthropic auth failed — check ANTHROPIC_API_KEY in the "
+                "environment (or the GitHub Actions secret)"
             ) from exc
         except anthropic.APIStatusError as exc:
             raise BriefingError(
@@ -325,8 +347,26 @@ class AnthropicProvider:
             ) from exc
         except anthropic.APIConnectionError as exc:
             raise BriefingError("Anthropic API not reachable — check the network") from exc
+        usage = getattr(message, "usage", None)
+        if usage is not None:
+            self.usage.append(
+                {
+                    k: int(getattr(usage, k, 0) or 0)
+                    for k in (
+                        "input_tokens",
+                        "output_tokens",
+                        "cache_creation_input_tokens",
+                        "cache_read_input_tokens",
+                    )
+                }
+            )
         if message.stop_reason == "refusal":
             raise BriefingError("Anthropic declined the request (stop_reason=refusal)")
+        served_by = getattr(message, "model", None)
+        if served_by and served_by != self.model:
+            # The fallback model answered; record it so the artifact is honest.
+            print(f"  note: {self.model} declined, served by {served_by}")
+            self.model = served_by
         text = "".join(block.text for block in message.content if block.type == "text")
         return text.strip()
 
@@ -711,6 +751,24 @@ def validate_briefing(briefing_md: str, context: str) -> ValidationResult:
     return result
 
 
+# The briefing describes; it never predicts or recommends. Case-insensitive,
+# word-boundary phrases. `sell` excludes sell-off/selloff (a description of a
+# past move, not advice).
+_FORWARD_LOOKING_RE = re.compile(
+    r"\b(?:"
+    r"will|won['’]t|going to|expected to|likely to|poised to|set to"
+    r"|(?:should|could|may)\s+(?:rise|fall|continue|benefit|help|provide)"
+    r"|buy|sell(?![-‐‑]?off)|trim|recommend\w*"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def find_forward_looking(text: str) -> list[str]:
+    """Phrases in `text` that read as a prediction or a recommendation."""
+    return [m.group(0) for m in _FORWARD_LOOKING_RE.finditer(text or "")]
+
+
 def validate_steps(
     steps: list[dict], marts: dict[str, pd.DataFrame], context: str, n_news: int
 ) -> ValidationResult:
@@ -764,6 +822,11 @@ def validate_steps(
             result.errors.append(f"step {sid}: narration starts with junk: {narration[:30]!r}")
         if "<think>" in narration.lower():
             result.errors.append(f"step {sid}: narration contains <think> tags")
+        for phrase in find_forward_looking(narration):
+            result.errors.append(
+                f"step {sid}: forward-looking or advisory phrase {phrase!r} "
+                "(describe what happened; never predict or recommend)"
+            )
 
         for figure in step.get("figures") or []:
             if figure not in narration:
@@ -797,7 +860,7 @@ def validate_steps(
 
 
 # briefing_md paragraph grouping: macro context / sector context / the portfolio —
-# preserves v1's three-paragraph shape for the Streamlit sidebar and text fallback.
+# preserves v1's three-paragraph shape for the text fallback.
 _PARAGRAPH_GROUPS = (("regime", "indicator"), ("sector",), ("allocation", "holding"))
 
 
@@ -919,6 +982,7 @@ def generate(
     *,
     skip_news: bool = False,
     max_attempts: int | None = None,
+    dry_run: bool = False,
 ) -> dict[str, object]:
     """Full pipeline: guard -> read marts -> news -> packet -> LLM -> validate
     -> write. Raises PrivacyError / ValidationError / BriefingError; never
@@ -926,7 +990,9 @@ def generate(
 
     A tour that fails validation is regenerated up to max_attempts times
     (ANCHOR_BRIEFING_ATTEMPTS, default 3), each retry carrying the previous
-    attempt's validator errors so the model can correct rather than re-roll."""
+    attempt's validator errors so the model can correct rather than re-roll.
+    Provider errors are never retried. `dry_run` validates but skips the
+    write, and returns the steps list (not a count) under "steps"."""
     if portfolio not in ("demo", "real"):
         raise ValueError(f"portfolio must be 'demo' or 'real', got {portfolio!r}")
     # The privacy guard fires before ANY I/O: a real-portfolio briefing from a
@@ -937,7 +1003,11 @@ def generate(
             f"{provider.name!r} (is_local=False) — see docs/llm_copilot_briefing_design.md"
         )
     dataset = "anchor_marts_private" if portfolio == "real" else "anchor_marts"
+    if portfolio == "real":
+        # yfinance logs fetch failures with the ticker in the message.
+        logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 
+    # Marts and news are fetched once; only the LLM call is repeated.
     marts = read_marts(client, dataset)
     news = [] if skip_news else fetch_news(held_tickers(marts["portfolio_composition"]))
     context = build_context(marts, news)
@@ -953,23 +1023,29 @@ def generate(
             break
         except ValidationError as exc:
             failures.append(str(exc))
-            print(f"  attempt {attempt}/{max_attempts} rejected: {exc}", file=sys.stderr)
+            detail = describe_failure(exc, portfolio)
+            print(f"  attempt {attempt}/{max_attempts} rejected: {detail}")
     else:
         raise ValidationError(
             f"tour rejected on all {max_attempts} attempts; last: {failures[-1]}"
         )
 
     as_of = marts["as_of_calendar"]["as_of_date"].iloc[0]
-    artifact = build_artifact(
-        briefing_md, as_of_date=as_of, provider=provider, news=news, steps=steps
-    )
-    table_id = write_briefing(client, dataset, artifact)
-    return {
-        "table": table_id,
+    summary: dict[str, object] = {
+        "table": None,
         "as_of_date": str(pd.to_datetime(as_of).date()),
         "chars": len(briefing_md),
         "steps": len(steps),
         "headlines": len(news),
         "model": provider.model,
         "warnings": result.warnings,
+        "usage": list(getattr(provider, "usage", None) or []),
     }
+    if dry_run:
+        summary["steps"] = steps
+        return summary
+    artifact = build_artifact(
+        briefing_md, as_of_date=as_of, provider=provider, news=news, steps=steps
+    )
+    summary["table"] = write_briefing(client, dataset, artifact)
+    return summary

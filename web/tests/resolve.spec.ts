@@ -7,7 +7,7 @@ import {
   resolveStepFocus,
 } from "../src/lib/resolve";
 import type {
-  AnchorBundle,
+  TourBundle,
   HoldingBenchmark,
   RelativeLabel,
   TourStep,
@@ -19,8 +19,8 @@ import frozenJson from "./fixtures/anchor-2026-07.json";
 // changes on every refresh, so only invariants may be asserted against it.
 // `frozen` is a pinned copy of the 2026-07-08 export: exact expectations live
 // here, where a data refresh can't invalidate them.
-const bundle = bundleJson as unknown as AnchorBundle;
-const frozen = frozenJson as unknown as AnchorBundle;
+const bundle = bundleJson as unknown as TourBundle;
+const frozen = frozenJson as unknown as TourBundle;
 
 test.describe("parseFigure", () => {
   test("parses % and pp display strings", () => {
@@ -76,6 +76,8 @@ test.describe("resolveStepFocus against the frozen 2026-07 bundle", () => {
 });
 
 test.describe("resolveStepFocus against the live committed bundle", () => {
+  test.skip(!bundle.briefing, "the committed bundle has no briefing today");
+
   test("holding steps satisfy the resolver's invariants", () => {
     const holdingSteps = bundle.briefing.steps.filter(
       (s) => s.target.kind === "holding",
@@ -213,6 +215,7 @@ test.describe("resolveHoldingFocus edge cases", () => {
 
 test.describe("buildTourModel", () => {
   test("resolves every step and maps scenes by target kind", () => {
+    test.skip(!bundle.briefing, "the committed bundle has no briefing today");
     const model = buildTourModel(bundle);
     expect(model.steps.length).toBe(bundle.briefing.steps.length);
     const scenes = model.steps.map((s) => s.scene);
@@ -232,9 +235,9 @@ test.describe("buildTourModel", () => {
       headline_refs: [0, 999, -1],
     };
     const model = buildTourModel({
-      ...bundle,
-      briefing: { ...bundle.briefing, steps: [step] },
+      ...frozen,
+      briefing: { ...frozen.briefing, steps: [step] },
     });
-    expect(model.steps[0].headlines).toEqual([bundle.briefing.sources[0]]);
+    expect(model.steps[0].headlines).toEqual([frozen.briefing.sources[0]]);
   });
 });

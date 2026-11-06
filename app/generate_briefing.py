@@ -3,28 +3,33 @@
 Pipeline-time step (see docs/llm_copilot_briefing_design.md): reads the served
 marts, fetches held-ticker headlines, generates via the configured provider
 (local Ollama by default), validates, then WRITE_TRUNCATEs `copilot_briefing`.
-A failure exits non-zero, which halts `make refresh` before the snapshot
-export — the strict failure policy.
+A failure exits non-zero. scripts/public_refresh.py tolerates that and still
+exports the numbers with a null briefing; the CLI itself stays strict.
 
 Run locally (needs BigQuery creds + Ollama running, unless on the cloud provider):
     python app/generate_briefing.py --portfolio demo
     python app/generate_briefing.py --portfolio real   # local provider enforced in code
 
-Config (.env, optional):
+    python app/generate_briefing.py --dry-run --out briefing.json  # validate, no write
+
+Config (environment; .env for local non-secret settings):
     ANCHOR_BRIEFING_PROVIDER     ollama (default) | llama-server | anthropic —
                                  cloud is DEMO ONLY; with --portfolio real it hard-fails
-    ANCHOR_BRIEFING_MODEL        Ollama model (default gemma4:31b)
+    ANCHOR_BRIEFING_MODEL        Ollama model (default qwen3.6:35b)
     OLLAMA_HOST                  Ollama endpoint
     ANCHOR_LLAMA_SERVER_HOST     llama-server endpoint (default http://127.0.0.1:8080)
     ANCHOR_BRIEFING_ATTEMPTS     regenerate on validation failure, up to N (default 3)
-    ANCHOR_BRIEFING_CLOUD_MODEL  Anthropic model (default claude-opus-4-8)
-    ANTHROPIC_API_KEY            required for the anthropic provider
+    ANCHOR_BRIEFING_CLOUD_MODEL  Anthropic model (default claude-sonnet-5-5)
+    ANTHROPIC_API_KEY            required for the anthropic provider; set in the
+                                 shell or GitHub secrets, not .env
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import sys
+from pathlib import Path
 
 import briefing
 
@@ -37,7 +42,16 @@ def main() -> None:
     parser.add_argument(
         "--no-news", action="store_true", help="skip yfinance headlines (offline debugging)"
     )
+    parser.add_argument(
+        "--dry-run", action="store_true",
+        help="generate and validate, but do not write to BigQuery",
+    )
+    parser.add_argument(
+        "--out", type=Path, help="with --dry-run: save the validated result as JSON here"
+    )
     args = parser.parse_args()
+    if args.out and not args.dry_run:
+        parser.error("--out requires --dry-run")
 
     from dotenv import load_dotenv  # model/host config lives in .env like the other secrets
 
@@ -49,13 +63,31 @@ def main() -> None:
         provider = briefing.build_provider(args.portfolio)
         client = briefing.build_bigquery_client()
         summary = briefing.generate(
-            args.portfolio, provider, client, skip_news=args.no_news
+            args.portfolio, provider, client,
+            skip_news=args.no_news, dry_run=args.dry_run,
         )
     except briefing.BriefingError as exc:
-        print(f"briefing generation failed: {exc}", file=sys.stderr)
+        detail = briefing.describe_failure(exc, args.portfolio)
+        print(f"briefing generation failed: {detail}", file=sys.stderr)
         sys.exit(1)
 
-    for warning in summary["warnings"]:
+    if args.dry_run:
+        if args.out:
+            args.out.write_text(json.dumps(summary, indent=2, default=str))
+        print(
+            f"  dry run, nothing written — as_of {summary['as_of_date']}, "
+            f"{len(summary['steps'])} tour steps, {summary['chars']} chars, "
+            f"model {summary['model']}" + (f", saved to {args.out}" if args.out else "")
+        )
+        for i, u in enumerate(summary.get("usage") or [], start=1):
+            print(
+                f"  call {i}: {u['input_tokens']} in, {u['output_tokens']} out, "
+                f"cache write {u['cache_creation_input_tokens']}, "
+                f"cache read {u['cache_read_input_tokens']}"
+        )
+        return
+
+    for warning in briefing.describe_warnings(summary["warnings"], args.portfolio):
         print(f"  WARNING (numeric audit): {warning}")
     print(
         f"  wrote {summary['table']} — as_of {summary['as_of_date']}, "

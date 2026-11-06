@@ -3,8 +3,8 @@ import { useTour } from "./TourContext";
 
 /**
  * Generic scroll scene: a sticky full-viewport visual layer with the scene's
- * tour steps rendered as invisible, contiguous 100svh sentinels scrolling past
- * behind it. Scenes with no bound steps are one viewport tall and static —
+ * tour steps rendered as invisible, contiguous 70svh sentinels scrolling past
+ * behind it. Scenes with no bound steps are 80svh tall and static, centered —
  * any valid 6–12 step script renders without per-script layout code.
  */
 export function SceneShell({
@@ -16,16 +16,26 @@ export function SceneShell({
 }) {
   const { model, registerSentinel } = useTour();
   const steps = model.steps.filter((s) => s.scene === scene);
+  // Sentinels are 70svh, so a scene scrolls 70svh per step; the sticky layer
+  // is a full viewport, so the section carries 30svh of tail to let it stay
+  // pinned through the last step. Step-less scenes (masthead, coda) are 80svh and static.
+  const height = steps.length * 70 + 30;
 
   return (
     <section
       data-scene={scene}
       className="relative"
-      style={{ height: `${Math.max(steps.length, 1) * 100}svh` }}
+      style={{ height: `${steps.length > 0 ? height : 80}svh` }}
     >
       {/* pb reserves room for the mobile narration sheet; the rail owns that
           space on md+. */}
-      <div className="sticky top-0 flex h-svh flex-col justify-center overflow-hidden pb-56 md:pb-0">
+      <div
+        className={`sticky top-0 flex flex-col overflow-hidden pb-56 md:pb-0 ${
+          steps.length > 0
+            ? "h-svh justify-start pt-10 md:pt-14"
+            : "h-[80svh] justify-center"
+        }`}
+      >
         {children}
       </div>
       {steps.length > 0 && (
@@ -38,7 +48,7 @@ export function SceneShell({
               key={s.id}
               data-step-sentinel={s.id}
               ref={registerSentinel(s.id)}
-              className="h-svh"
+              className="h-[70svh]"
             />
           ))}
         </div>

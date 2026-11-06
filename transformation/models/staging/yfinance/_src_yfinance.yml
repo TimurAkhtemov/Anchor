@@ -3,7 +3,7 @@ version: 2
 sources:
   - name: yfinance
     database: anchor-495115
-    schema: raw_yfinance
+    schema: "{{ 'raw_yfinance_private' if var('holdings_source', 'demo') == 'real' else 'raw_yfinance' }}"
     tables:
       - name: raw_yfinance_tickers
         description: Metadata for stock tickers ingested from yfinance.

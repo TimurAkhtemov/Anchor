@@ -2,8 +2,11 @@
 
 /* Morning-paper identity — light-only by design (the paper IS the identity).
    Palette validated with the dataviz validator against #F9F5EC: ahead/behind
-   are the CVD-safe blue<->bronze diverging pair (ΔE 33.1), the in_line
-   midpoint is deliberately neutral gray, text roles clear WCAG. */
+   are the conventional green<->red diverging pair (normal-vision ΔE 24.4;
+   deutan ΔE 6.9, legal because colour never stands alone: every value carries
+   its sign, every comparison its AHEAD/BEHIND word, every bar its side of the
+   baseline), the in_line midpoint is deliberately neutral gray, text roles
+   clear WCAG AA. */
 
 @theme inline {
   --color-paper: #f9f5ec; /* page ground */
@@ -14,8 +17,8 @@
   --color-rule: #e5dccb; /* hairlines */
   --color-pencil: #2f5a9e; /* editor's blue pencil — step marks, spotlights (6.3:1) */
   --color-pencil-wash: #e3e9f4; /* pencil at chip-background strength */
-  --color-ahead: #3e6fb0; /* diverging cool pole (4.7:1) */
-  --color-behind: #a16a2e; /* diverging warm pole (4.2:1) */
+  --color-ahead: #1f6f3f; /* diverging gain pole, green (5.7:1) */
+  --color-behind: #b3362b; /* diverging loss pole, red (5.6:1) */
   --color-steady: #948a7b; /* diverging neutral midpoint — in_line */
   --color-bar: #7a6d57; /* sector bars, single-hue nominal series (4.7:1) */
   --color-alloc-equity: #3a342a; /* ink-wash ordinal ramp: equity */

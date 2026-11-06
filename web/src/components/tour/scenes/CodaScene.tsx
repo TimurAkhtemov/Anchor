@@ -44,6 +44,14 @@ export function CodaScene() {
         )}
         <p className="mt-10">
           <Link
+            href="/"
+            className="font-display italic text-pencil underline decoration-1 underline-offset-4"
+          >
+            ← Back to the dashboard
+          </Link>
+        </p>
+        <p className="mt-4">
+          <Link
             href="/text"
             className="font-display italic text-pencil underline decoration-1 underline-offset-4"
           >

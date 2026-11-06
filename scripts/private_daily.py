@@ -3,10 +3,12 @@
 
 This runner is intentionally separate from the public/demo Dagster graph. It
 pulls read-only brokerage positions through SnapTrade, refreshes shared market
-data, builds only the ``prod-private`` dbt target, and normally generates the
-private briefing through local Ollama. ``--skip-briefing`` provides a temporary
-maintenance escape hatch when another local model workload is active. The
-runner never exports a parquet or web bundle.
+data, builds only the ``prod-private`` dbt target, normally generates the
+private briefing through a local model server, then exports a bundle and builds the
+static site, both only under gitignored ``var/private_web``. A failed briefing
+degrades the run (fresh numbers, no narration) instead of failing it.
+``--skip-briefing`` provides a temporary maintenance escape hatch when another
+local model workload is active.
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ import argparse
 import fcntl
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -25,8 +28,10 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 VAR_DIR = REPO_ROOT / "var"
+WEB_DIR = REPO_ROOT / "web"
 STATUS_PATH = VAR_DIR / "private_daily_status.json"
 LOCK_PATH = VAR_DIR / "private_daily.lock"
+LOCAL_PROVIDERS = {"ollama", "llama-server", "llama_server", "llamaserver"}
 REQUIRED_NONEMPTY_ENV = (
     "FRED_API_KEY",
     "SNAPTRADE_CLIENT_ID",
@@ -38,7 +43,8 @@ REQUIRED_NONEMPTY_ENV = (
 class Step:
     name: str
     command: tuple[str, ...]
-    cwd: Path = REPO_ROOT
+    cwd: Path | None = None  # None runs from the repo root
+    soft: bool = False  # a failure degrades the run instead of stopping it
 
 
 class PreflightError(RuntimeError):
@@ -98,8 +104,11 @@ def configure_environment() -> tuple[Path, Path, Path, Path]:
 
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(keyfile)
     # Real holdings are local-only even if the user's general .env selects a
-    # cloud provider for the demo world.
-    os.environ["ANCHOR_BRIEFING_PROVIDER"] = "ollama"
+    # cloud provider for the demo world. Either local provider is honoured;
+    # anything else falls back to Ollama (build_provider still hard-fails
+    # cloud + real as the structural guard).
+    if os.environ.get("ANCHOR_BRIEFING_PROVIDER", "").strip().lower() not in LOCAL_PROVIDERS:
+        os.environ["ANCHOR_BRIEFING_PROVIDER"] = "ollama"
     return env_file, python, dbt, private_dir
 
 
@@ -122,6 +131,15 @@ def preflight() -> tuple[Path, Path, Path]:
     keyfile = Path(os.environ["GOOGLE_APPLICATION_CREDENTIALS"])
     if not keyfile.is_file():
         problems.append(f"BigQuery keyfile not found: {keyfile}")
+    # LaunchAgents have a minimal PATH, so install records npm as ANCHOR_NPM.
+    npm = os.environ.get("ANCHOR_NPM") or shutil.which("npm")
+    if not npm or not Path(npm).is_file():
+        problems.append(
+            f"npm not found (ANCHOR_NPM={npm or 'unset'}); "
+            "run make install-private-services after installing Node"
+        )
+    if not (WEB_DIR / "node_modules").is_dir():
+        problems.append(f"{WEB_DIR / 'node_modules'} missing; run make bootstrap-private")
     if problems:
         raise PreflightError("; ".join(problems))
     return python, dbt, private_dir
@@ -144,7 +162,7 @@ def build_steps(
     steps = [
         Step("snaptrade_holdings", tuple(holdings)),
         Step("fred", (str(python), "ingestion/ingest_fred.py")),
-        Step("market_prices", (str(python), "ingestion/ingest_yfinance.py")),
+        Step("market_prices", (str(python), "ingestion/ingest_yfinance.py", "--world", "real")),
         Step(
             "private_marts",
             (
@@ -163,14 +181,26 @@ def build_steps(
             Step(
                 "private_briefing",
                 (str(python), "app/generate_briefing.py", "--portfolio", "real"),
+                soft=True,
             )
         )
+    steps.extend(
+        (
+            Step(
+                "private_bundle",
+                (str(python), "app/export_web.py", "--portfolio", "real"),
+            ),
+            Step("private_site", (str(python), "scripts/private_web.py", "build")),
+        )
+    )
     return steps
 
 
 def _run_step(step: Step) -> None:
     print(f"[{_now()}] START {step.name}", flush=True)
-    result = subprocess.run(step.command, cwd=step.cwd, env=os.environ.copy(), check=False)
+    result = subprocess.run(
+        step.command, cwd=step.cwd or REPO_ROOT, env=os.environ.copy(), check=False
+    )
     if result.returncode:
         raise StepError(step.name, result.returncode)
     print(f"[{_now()}] OK {step.name}", flush=True)
@@ -218,6 +248,7 @@ def refresh(*, skip_briefing: bool = False) -> int:
                 "data_as_of": previous.get("data_as_of"),
             },
         )
+        degraded_steps: list[str] = []
         try:
             python, dbt, private_dir = preflight()
             for step in build_steps(
@@ -227,7 +258,13 @@ def refresh(*, skip_briefing: bool = False) -> int:
                 status = _load_json(STATUS_PATH)
                 status["step"] = current_step
                 _write_json(STATUS_PATH, status)
-                _run_step(step)
+                try:
+                    _run_step(step)
+                except StepError as exc:
+                    if not step.soft:
+                        raise
+                    degraded_steps.append(step.name)
+                    print(f"[{_now()}] DEGRADED {exc}", file=sys.stderr, flush=True)
         except (PreflightError, StepError) as exc:
             failed = {
                 "state": "failed",
@@ -258,18 +295,18 @@ def refresh(*, skip_briefing: bool = False) -> int:
             return 130
 
         finished_at = _now()
-        _write_json(
-            STATUS_PATH,
-            {
-                "state": "success",
-                "step": "complete",
-                "started_at": started_at,
-                "finished_at": finished_at,
-                "last_success_at": finished_at,
-                "data_as_of": _private_data_as_of(),
-            },
-        )
-        print(f"[{finished_at}] private refresh complete", flush=True)
+        final = {
+            "state": "degraded" if degraded_steps else "success",
+            "step": "complete",
+            "started_at": started_at,
+            "finished_at": finished_at,
+            "last_success_at": finished_at,
+            "data_as_of": _private_data_as_of(),
+        }
+        if degraded_steps:
+            final["degraded_steps"] = degraded_steps
+        _write_json(STATUS_PATH, final)
+        print(f"[{finished_at}] private refresh {final['state']}", flush=True)
         return 0
 
 

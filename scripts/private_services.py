@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import os
 import plistlib
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -15,18 +16,26 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 REFRESH_LABEL = "com.timurakhtemov.anchor.private-refresh"
 DASHBOARD_LABEL = "com.timurakhtemov.anchor.private-dashboard"
+BASE_PATH = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 
-def _environment(repo: Path, env_file: Path, private_data_dir: Path) -> dict[str, str]:
+def _refresh_environment(
+    repo: Path, env_file: Path, private_data_dir: Path, npm: str
+) -> dict[str, str]:
+    # npm's shebang needs the node installed beside it under launchd's minimal PATH.
+    npm_dir = str(Path(npm).parent)
+    path_entries = BASE_PATH.split(":")
+    path = BASE_PATH if npm_dir in path_entries else f"{npm_dir}:{BASE_PATH}"
     return {
         "ANCHOR_ENV_FILE": str(env_file),
         "ANCHOR_PRIVATE_DATA_DIR": str(private_data_dir),
         "ANCHOR_PYTHON": str(repo / "venv" / "bin" / "python"),
         "ANCHOR_DBT": str(Path.home() / ".local" / "bin" / "dbt"),
+        "ANCHOR_NPM": npm,
         "GOOGLE_APPLICATION_CREDENTIALS": str(
             Path.home() / ".dbt" / "anchor-bigquery-key.json"
         ),
-        "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        "PATH": path,
     }
 
 
@@ -35,10 +44,11 @@ def build_plists(
     env_file: Path,
     private_data_dir: Path,
     *,
+    npm: str,
     hour: int = 21,
     minute: int = 30,
 ) -> dict[str, dict]:
-    env = _environment(repo, env_file, private_data_dir)
+    env = _refresh_environment(repo, env_file, private_data_dir, npm)
     log_dir = repo / "var" / "logs"
     refresh = {
         "Label": REFRESH_LABEL,
@@ -57,24 +67,20 @@ def build_plists(
         "StandardOutPath": str(log_dir / "private_refresh.out.log"),
         "StandardErrorPath": str(log_dir / "private_refresh.err.log"),
     }
-    dashboard_env = {
-        **env,
-        "ANCHOR_PORTFOLIO": "real",
-        "ANCHOR_SOURCE": "bigquery",
-        "ANCHOR_PRIVATE_STATUS_PATH": str(repo / "var" / "private_daily_status.json"),
-    }
     dashboard = {
         "Label": DASHBOARD_LABEL,
+        # A static file server holds no secrets. It re-resolves the `current` symlink
+        # per request, so a new build needs no restart, and until the first build it
+        # answers 404 instead of crash-looping. It also refuses foreign Host headers
+        # (DNS rebinding), which `python -m http.server` does not.
         "ProgramArguments": [
-            str(repo / "venv" / "bin" / "streamlit"),
-            "run",
-            str(repo / "app" / "app.py"),
-            "--server.headless=true",
-            "--server.address=127.0.0.1",
-            "--server.port=8501",
+            str(repo / "venv" / "bin" / "python"),
+            str(repo / "scripts" / "private_static_server.py"),
+            "8501",
+            str(repo / "var" / "private_web" / "current"),
         ],
         "WorkingDirectory": str(repo),
-        "EnvironmentVariables": dashboard_env,
+        "EnvironmentVariables": {"PATH": BASE_PATH},
         "RunAtLoad": True,
         "KeepAlive": True,
         "ProcessType": "Interactive",
@@ -100,16 +106,21 @@ def _launchctl(*args: str, check: bool = True) -> subprocess.CompletedProcess:
 
 def install(repo: Path, env_file: Path, private_data_dir: Path) -> int:
     python = repo / "venv" / "bin" / "python"
-    streamlit = repo / "venv" / "bin" / "streamlit"
-    missing = [path for path in (python, streamlit, env_file) if not path.is_file()]
+    node_modules = repo / "web" / "node_modules"
+    npm = shutil.which("npm")
+    missing = [str(path) for path in (python, env_file) if not path.is_file()]
+    if not node_modules.is_dir():
+        missing.append(f"{node_modules} (run make bootstrap-private)")
+    if not npm:
+        missing.append("npm on PATH")
     if missing:
-        print("Cannot install; missing: " + ", ".join(map(str, missing)), file=sys.stderr)
+        print("Cannot install; missing: " + ", ".join(missing), file=sys.stderr)
         return 1
 
     (repo / "var" / "logs").mkdir(parents=True, exist_ok=True)
     agents = Path.home() / "Library" / "LaunchAgents"
     domain = f"gui/{os.getuid()}"
-    for label, payload in build_plists(repo, env_file, private_data_dir).items():
+    for label, payload in build_plists(repo, env_file, private_data_dir, npm=npm).items():
         path = agents / f"{label}.plist"
         _launchctl("bootout", domain, str(path), check=False)
         _write_plist(path, payload)

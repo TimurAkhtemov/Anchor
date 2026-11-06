@@ -15,4 +15,11 @@ fi
   -r "$repo_root/ingestion/requirements.txt" \
   -r "$repo_root/app/requirements.txt"
 
-print "Private operations runtime ready: $repo_root/venv"
+npm_bin=${ANCHOR_NPM:-$(command -v npm || true)}
+if [[ -z "$npm_bin" ]]; then
+  print -u2 "npm not found; install Node, then rerun make bootstrap-private"
+  exit 1
+fi
+(cd "$repo_root/web" && "$npm_bin" ci)
+
+print "Private operations runtime ready: $repo_root/venv, $repo_root/web/node_modules"

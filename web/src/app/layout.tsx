@@ -9,6 +9,8 @@ const newsreader = Newsreader({
   variable: "--font-newsreader",
   subsets: ["latin"],
   style: ["normal", "italic"],
+  // Optical sizing: the large headline gets the tighter display cut.
+  axes: ["opsz"],
 });
 
 const publicSans = Public_Sans({
@@ -24,7 +26,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Anchor — Morning Briefing",
   description:
-    "A guided reading of the day's portfolio context: macro environment, then sectors, then holdings.",
+    "A macro-aware portfolio dashboard, read in order: macro environment, then sectors, then holdings.",
 };
 
 export const viewport: Viewport = {

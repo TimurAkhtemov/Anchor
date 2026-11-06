@@ -72,7 +72,7 @@ jobs:
         run: python orchestration/prepare_manifest.py
 
       - name: Run pytest
-        # Includes Definitions/package-boundary tests plus the committed-snapshot
+        # Includes Definitions/package-boundary tests plus the committed-bundle
         # privacy invariant; none of these tests query BigQuery.
         env:
           PYTHONPATH: orchestration

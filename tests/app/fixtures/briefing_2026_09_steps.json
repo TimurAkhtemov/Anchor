@@ -1,0 +1,110 @@
+[
+  {
+    "id": 1,
+    "target": {
+      "kind": "regime",
+      "key": "null"
+    },
+    "narration": "The macro backdrop remains anchored with rates holding firm while inflation continues its downward trajectory and labor conditions stay steady. This environment supports the portfolio's heavy equity tilt by keeping discount rates predictable, though it leaves fixed-income allocations exposed to duration risk as yields remain elevated.",
+    "figures": [],
+    "headline_refs": []
+  },
+  {
+    "id": 2,
+    "target": {
+      "kind": "indicator",
+      "key": "Inflation (YoY)"
+    },
+    "narration": "Inflation continues to cool at a measurable pace, reinforcing the steady-rate environment that underpins the portfolio's equity-heavy construction. The three-month decline of -0.48 pp brings the current reading to 3.30%, which reduces pressure on long-duration assets while leaving the fixed-income sleeve vulnerable to the concurrent rise in Treasury yields.",
+    "figures": [
+      "-0.48 pp",
+      "3.30%"
+    ],
+    "headline_refs": []
+  },
+  {
+    "id": 3,
+    "target": {
+      "kind": "sector",
+      "key": "XLE"
+    },
+    "narration": "Energy leads the sector landscape, moving in tandem with rising rates and capturing broad commodity strength. The ETF's 1M gain of +12.64% directly supports the portfolio's exposure to momentum-driven energy names, offsetting broader market softness in rate-sensitive sectors like technology and consumer cyclicals.",
+    "figures": [
+      "+12.64%"
+    ],
+    "headline_refs": []
+  },
+  {
+    "id": 4,
+    "target": {
+      "kind": "allocation",
+      "key": "null"
+    },
+    "narration": "The portfolio maintains a heavily weighted equity core with minimal fixed-income and cash buffers, positioning it to capture upside while accepting higher interest rate sensitivity. This 84.4% equity concentration aligns with the cooling inflation regime but leaves the 7.9% fixed-income sleeve exposed to duration headwinds as benchmark yields climb.",
+    "figures": [
+      "84.4%",
+      "7.9%"
+    ],
+    "headline_refs": []
+  },
+  {
+    "id": 5,
+    "target": {
+      "kind": "holding",
+      "key": "TALO"
+    },
+    "narration": "Talos Energy stands out as a clear momentum outlier, moving +22.46 pp (ahead) against MDY and +6.69 pp (ahead) against XLE over the past month. Its 1M advance of +19.33% tracks closely with XLE's rate-linked strength, while Zacks notes the stock's sustained upward trajectory as it navigates mixed upstream earnings across its peer group.",
+    "figures": [
+      "+22.46 pp",
+      "+6.69 pp",
+      "+19.33%"
+    ],
+    "headline_refs": [
+      15
+    ]
+  },
+  {
+    "id": 6,
+    "target": {
+      "kind": "holding",
+      "key": "AAPL"
+    },
+    "narration": "Apple delivers steady relative performance against the market, posting +1.95 pp (in line) vs SPY over one month while trailing XLK by -14.28 pp (behind) year to date. InvestorsHub and Insider Monkey report that an upcoming product cycle featuring a first foldable iPhone under new leadership will provide a near-term catalyst that may help bridge the gap with XLK as the broader tech sleeve faces rate headwinds.",
+    "figures": [
+      "+1.95 pp",
+      "-14.28 pp"
+    ],
+    "headline_refs": [
+      3,
+      4
+    ]
+  },
+  {
+    "id": 7,
+    "target": {
+      "kind": "holding",
+      "key": "BND"
+    },
+    "narration": "The total bond market fund tracks its benchmark closely, but the fixed-income sleeve as a whole faces duration pressure from the steady rate environment. While 24/7 Wall St. highlights that BND currently offers a higher payout than comparable funds, the underlying rate risk remains tied to the broader macro backdrop where Treasury yields have climbed +0.31 pp over three months.",
+    "figures": [
+      "+0.31 pp"
+    ],
+    "headline_refs": [
+      12
+    ]
+  },
+  {
+    "id": 8,
+    "target": {
+      "kind": "holding",
+      "key": "JPM"
+    },
+    "narration": "JPMorgan Chase maintains its position ahead of the broader financial sector over the past year, even as it slips slightly in the most recent month alongside rate-sensitive peers. GuruFocus.com points to rapid franchise expansion and nearly doubling Canadian revenue as structural drivers, which supports the bank's +2.73 pp (ahead) vs SPY over one year despite the current macro cooling.",
+    "figures": [
+      "+2.73 pp"
+    ],
+    "headline_refs": [
+      6
+    ]
+  }
+]

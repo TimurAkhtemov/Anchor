@@ -6,8 +6,12 @@ numbers get into the prompt / out of the model" a deterministic test.
 """
 from __future__ import annotations
 
+import importlib
 import json
+import logging
+import sys
 from datetime import date, datetime, timezone
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -367,6 +371,200 @@ _CTX = (
 _PAD = " Context filler so the length check passes." * 6
 
 
+# --- 3c. forward-looking guard, retry, dry run ---------------------------------------
+
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+class SequenceProvider(FakeProvider):
+    """Returns successive canned outputs; counts calls and records prompts."""
+
+    def __init__(self, outputs: list[str]):
+        super().__init__(outputs[0])
+        self.outputs = list(outputs)
+        self.calls = 0
+        self.prompts: list[str] = []
+
+    def generate(self, system, prompt, *, format_schema=None):
+        out = self.outputs[min(self.calls, len(self.outputs) - 1)]
+        self.calls += 1
+        self.prompts.append(prompt)
+        self.system, self.prompt, self.format_schema = system, prompt, format_schema
+        return out
+
+
+def _with_narration(idx: int, text: str) -> str:
+    steps = [dict(s) for s in GOOD_STEPS]
+    steps[idx] = {**steps[idx], "narration": text, "figures": []}
+    return json.dumps({"steps": steps})
+
+
+def test_validate_steps_rejects_prediction():
+    marts, context = _steps_setup()
+    steps = [dict(s) for s in GOOD_STEPS]
+    steps[2] = {**steps[2], "narration": "Technology will provide a near-term catalyst.", "figures": []}
+    result = briefing.validate_steps(steps, marts, context, n_news=0)
+    assert any("step 3" in e and "'will'" in e for e in result.errors)
+
+
+def test_validate_steps_rejects_recommendation():
+    marts, context = _steps_setup()
+    steps = [dict(s) for s in GOOD_STEPS]
+    steps[3] = {**steps[3], "narration": "Given the mix, investors should buy more bonds.", "figures": []}
+    result = briefing.validate_steps(steps, marts, context, n_news=0)
+    assert any("step 4" in e for e in result.errors)
+
+
+def test_forward_look_ignores_sell_off():
+    assert briefing.find_forward_looking("A sell-off in energy weighed on the sector.") == []
+    assert briefing.find_forward_looking("The selloff in energy deepened.") == []
+    assert briefing.find_forward_looking("Investors sell the dip.") != []
+
+
+def test_find_forward_looking_phrases():
+    for text in [
+        "Rates won't move.", "It is going to rally.", "Expected to rise.",
+        "Likely to fall.", "Poised to gain.", "Set to report.",
+        "It could continue higher.", "That may help margins.",
+        "We recommend caution.", "Consider a trim.",
+    ]:
+        assert briefing.find_forward_looking(text), text
+    assert briefing.find_forward_looking("Energy led the month, up +12.64%.") == []
+
+
+def test_september_briefing_flags_only_the_apple_step():
+    steps = json.loads((FIXTURES / "briefing_2026_09_steps.json").read_text())
+    flagged = [s["id"] for s in steps if briefing.find_forward_looking(s["narration"])]
+    assert flagged == [6]
+
+
+def test_generate_retries_once_on_validation_failure():
+    bad = _with_narration(2, "Technology will provide a near-term catalyst.")
+    provider = SequenceProvider([bad, GOOD_TOUR])
+    client = FakeBQClient(_marts())
+    summary = briefing.generate("demo", provider, client, skip_news=True)
+    assert provider.calls == 2
+    assert len(client.loads) == 1
+    assert summary["steps"] == 6
+
+
+def test_generate_fails_after_second_invalid():
+    bad = _with_narration(2, "Technology will provide a near-term catalyst.")
+    provider = SequenceProvider([bad, bad, GOOD_TOUR])
+    client = FakeBQClient(_marts())
+    with pytest.raises(briefing.ValidationError):
+        briefing.generate("demo", provider, client, skip_news=True, max_attempts=2)
+    assert provider.calls == 2
+    assert client.loads == []
+
+
+def test_generate_does_not_retry_on_provider_error():
+    class Boom(FakeProvider):
+        calls = 0
+
+        def generate(self, system, prompt, *, format_schema=None):
+            Boom.calls += 1
+            raise briefing.BriefingError("api down")
+
+    with pytest.raises(briefing.BriefingError):
+        briefing.generate("demo", Boom(""), FakeBQClient(_marts()), skip_news=True)
+    assert Boom.calls == 1
+
+
+def test_real_retry_log_withholds_validation_detail(capsys):
+    """Validation errors quote tickers, figures, and narration, and the real
+    portfolio's stdout is a LaunchAgent log file."""
+    bad = _with_narration(2, "Technology will provide a near-term catalyst.")
+    provider = SequenceProvider([bad, GOOD_TOUR])
+    briefing.generate("real", provider, FakeBQClient(_marts()), skip_news=True)
+    printed = capsys.readouterr().out
+    assert "rejected" in printed
+    assert "step 3" not in printed and "will" not in printed
+
+
+def test_demo_retry_log_keeps_validation_detail(capsys):
+    bad = _with_narration(2, "Technology will provide a near-term catalyst.")
+    provider = SequenceProvider([bad, GOOD_TOUR])
+    briefing.generate("demo", provider, FakeBQClient(_marts()), skip_news=True)
+    assert "step 3" in capsys.readouterr().out
+
+
+def test_describe_failure_only_withholds_real_validation_errors():
+    secret = briefing.ValidationError("step 3: holding key 'ZZPRIVATE' not in the packet")
+    assert "ZZPRIVATE" not in briefing.describe_failure(secret, "real")
+    assert "ZZPRIVATE" in briefing.describe_failure(secret, "demo")
+    # Provider failures carry the reason an operator needs, and no portfolio data.
+    down = briefing.BriefingError("Ollama not reachable")
+    assert "Ollama not reachable" in briefing.describe_failure(down, "real")
+
+
+def test_describe_warnings_counts_for_real():
+    warnings = ["cited '12.5%' not found in the DATA packet"]
+    assert "12.5" not in " ".join(briefing.describe_warnings(warnings, "real"))
+    assert "1 " in briefing.describe_warnings(warnings, "real")[0]
+    assert briefing.describe_warnings(warnings, "demo") == warnings
+    assert briefing.describe_warnings([], "real") == []
+
+
+def test_real_generate_silences_yfinance_logger(monkeypatch):
+    """yfinance logs fetch failures with the ticker in the message."""
+    logger = logging.getLogger("yfinance")
+    monkeypatch.setattr(logger, "level", logging.NOTSET)
+    briefing.generate("real", FakeProvider(GOOD_TOUR), FakeBQClient(_marts()), skip_news=True)
+    assert logger.level == logging.CRITICAL
+
+
+@pytest.fixture
+def briefing_cli(monkeypatch):
+    """app/generate_briefing.py's main(), which imports `briefing` as a top-level module."""
+    monkeypatch.syspath_prepend(str(Path(briefing.__file__).parent))
+    module = importlib.import_module("generate_briefing")
+    inner = module.briefing
+    monkeypatch.setattr(inner, "build_provider", lambda _portfolio: object())
+    monkeypatch.setattr(inner, "build_bigquery_client", lambda: object())
+    monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)
+    monkeypatch.setattr(sys, "argv", ["generate_briefing.py", "--portfolio", "real"])
+    return module, inner
+
+
+def test_cli_failure_withholds_real_validation_detail(briefing_cli, monkeypatch, capsys):
+    module, inner = briefing_cli
+
+    def fail(*_a, **_k):
+        raise inner.ValidationError("step 3: holding key 'ZZPRIVATE' not in the packet")
+
+    monkeypatch.setattr(inner, "generate", fail)
+    with pytest.raises(SystemExit) as caught:
+        module.main()
+    assert caught.value.code == 1
+    streams = capsys.readouterr()
+    assert "briefing generation failed" in streams.err
+    assert "ZZPRIVATE" not in streams.out + streams.err
+
+
+def test_cli_success_withholds_real_audit_figures(briefing_cli, monkeypatch, capsys):
+    module, inner = briefing_cli
+    summary = {
+        "warnings": ["cited '12.5%' not found in the DATA packet"],
+        "table": "t", "as_of_date": "2026-11-05", "steps": 6, "chars": 900,
+        "headlines": 0, "model": "m",
+    }
+    monkeypatch.setattr(inner, "generate", lambda *_a, **_k: summary)
+    module.main()
+    printed = capsys.readouterr().out
+    assert "WARNING (numeric audit)" in printed
+    assert "12.5" not in printed
+
+
+def test_dry_run_does_not_write():
+    provider = FakeProvider(GOOD_TOUR)
+    client = FakeBQClient(_marts())
+    summary = briefing.generate("demo", provider, client, skip_news=True, dry_run=True)
+    assert client.loads == []
+    assert summary["steps"] == GOOD_STEPS
+    assert summary["table"] is None
+
+
 def test_validate_briefing_rejects_empty():
     result = briefing.validate_briefing("   ", _CTX)
     assert not result.ok
@@ -480,21 +678,59 @@ def test_held_tickers_excludes_cash_and_source_valued():
     assert briefing.held_tickers(composition) == ["AAPL", "BND"]
 
 
+def test_anthropic_provider_request_shape(monkeypatch):
+    """No network: a fake `anthropic` module records the request kwargs."""
+    import sys
+    import types
+
+    seen: dict = {}
+
+    class _Stream:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def get_final_message(self):
+            block = types.SimpleNamespace(type="text", text=' {"steps": []} ')
+            usage = types.SimpleNamespace(input_tokens=1200, output_tokens=340)
+            return types.SimpleNamespace(stop_reason="end_turn", content=[block], usage=usage)
+
+    class _Messages:
+        def stream(self, **kwargs):
+            seen.update(kwargs)
+            return _Stream()
+
+    fake = types.ModuleType("anthropic")
+    fake.Anthropic = lambda: types.SimpleNamespace(
+        beta=types.SimpleNamespace(messages=_Messages())
+    )
+    for name in ("AuthenticationError", "APIStatusError", "APIConnectionError"):
+        setattr(fake, name, type(name, (Exception,), {}))
+    monkeypatch.setitem(sys.modules, "anthropic", fake)
+
+    provider = briefing.AnthropicProvider(model="claude-sonnet-5-5")
+    out = provider.generate("sys", "prompt", format_schema={"type": "object"})
+    assert out == '{"steps": []}'
+    assert provider.usage == [
+        {
+            "input_tokens": 1200,
+            "output_tokens": 340,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+        }
+    ]
+    assert seen["model"] == "claude-sonnet-5-5"
+    assert seen["thinking"] == {"type": "adaptive"}
+    assert seen["betas"] == ["server-side-fallback-2026-07-01"]
+    assert seen["fallbacks"] == "default"
+    assert seen["output_config"]["effort"] == "medium"
+    assert seen["output_config"]["format"] == {"type": "json_schema", "schema": {"type": "object"}}
+    assert "temperature" not in seen
+
+
 # --- 5. validation retries + llama-server provider ---------------------------------
-
-
-class SequenceProvider(FakeProvider):
-    """Returns successive canned outputs; records every prompt."""
-
-    def __init__(self, outputs):
-        super().__init__(outputs[0])
-        self.outputs = list(outputs)
-        self.prompts = []
-
-    def generate(self, system, prompt, *, format_schema=None):
-        self.prompts.append(prompt)
-        self.system, self.prompt, self.format_schema = system, prompt, format_schema
-        return self.outputs.pop(0)
 
 
 def _bad_tour():
