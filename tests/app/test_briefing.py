@@ -694,7 +694,8 @@ def test_anthropic_provider_request_shape(monkeypatch):
 
         def get_final_message(self):
             block = types.SimpleNamespace(type="text", text=' {"steps": []} ')
-            return types.SimpleNamespace(stop_reason="end_turn", content=[block])
+            usage = types.SimpleNamespace(input_tokens=1200, output_tokens=340)
+            return types.SimpleNamespace(stop_reason="end_turn", content=[block], usage=usage)
 
     class _Messages:
         def stream(self, **kwargs):
@@ -707,10 +708,17 @@ def test_anthropic_provider_request_shape(monkeypatch):
         setattr(fake, name, type(name, (Exception,), {}))
     monkeypatch.setitem(sys.modules, "anthropic", fake)
 
-    out = briefing.AnthropicProvider(model="claude-sonnet-5-5").generate(
-        "sys", "prompt", format_schema={"type": "object"}
-    )
+    provider = briefing.AnthropicProvider(model="claude-sonnet-5-5")
+    out = provider.generate("sys", "prompt", format_schema={"type": "object"})
     assert out == '{"steps": []}'
+    assert provider.usage == [
+        {
+            "input_tokens": 1200,
+            "output_tokens": 340,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+        }
+    ]
     assert seen["model"] == "claude-sonnet-5-5"
     assert seen["thinking"] == {"type": "adaptive"}
     assert seen["output_config"]["effort"] == "medium"

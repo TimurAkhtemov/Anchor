@@ -79,6 +79,12 @@ def main() -> None:
             f"{len(summary['steps'])} tour steps, {summary['chars']} chars, "
             f"model {summary['model']}" + (f", saved to {args.out}" if args.out else "")
         )
+        for i, u in enumerate(summary.get("usage") or [], start=1):
+            print(
+                f"  call {i}: {u['input_tokens']} in, {u['output_tokens']} out, "
+                f"cache write {u['cache_creation_input_tokens']}, "
+                f"cache read {u['cache_read_input_tokens']}"
+        )
         return
 
     for warning in briefing.describe_warnings(summary["warnings"], args.portfolio):

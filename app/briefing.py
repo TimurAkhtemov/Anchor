@@ -302,6 +302,7 @@ class AnthropicProvider:
             "ANCHOR_BRIEFING_CLOUD_MODEL", DEFAULT_ANTHROPIC_MODEL
         )
         self.max_tokens = max_tokens
+        self.usage: list[dict[str, int]] = []  # one entry per call, for cost reporting
 
     def generate(
         self, system: str, prompt: str, *, format_schema: dict | None = None
@@ -340,6 +341,19 @@ class AnthropicProvider:
             ) from exc
         except anthropic.APIConnectionError as exc:
             raise BriefingError("Anthropic API not reachable — check the network") from exc
+        usage = getattr(message, "usage", None)
+        if usage is not None:
+            self.usage.append(
+                {
+                    k: int(getattr(usage, k, 0) or 0)
+                    for k in (
+                        "input_tokens",
+                        "output_tokens",
+                        "cache_creation_input_tokens",
+                        "cache_read_input_tokens",
+                    )
+                }
+            )
         if message.stop_reason == "refusal":
             raise BriefingError("Anthropic declined the request (stop_reason=refusal)")
         text = "".join(block.text for block in message.content if block.type == "text")
@@ -1014,6 +1028,7 @@ def generate(
         "headlines": len(news),
         "model": provider.model,
         "warnings": result.warnings,
+        "usage": list(getattr(provider, "usage", None) or []),
     }
     if dry_run:
         summary["steps"] = steps
