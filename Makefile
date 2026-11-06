@@ -9,7 +9,7 @@
 # (or the local keyfile); FRED ingestion reads FRED_API_KEY. dbt target/profile
 # is resolved by the caller's env (local ~/.dbt vs CI's DBT_PROFILES_DIR=ci).
 
-.PHONY: help ingest deps build-prod ingest-holdings-demo ingest-holdings-real ingest-holdings-real-snaptrade build-private briefing briefing-real snapshot export-web refresh dagster run-real run-demo bootstrap-private refresh-private private-status probe-snaptrade install-private-services uninstall-private-services
+.PHONY: help ingest deps build-prod ingest-holdings-demo ingest-holdings-real ingest-holdings-real-snaptrade build-private briefing briefing-real snapshot export-web public-refresh refresh dagster run-real run-demo bootstrap-private refresh-private private-status probe-snaptrade install-private-services uninstall-private-services
 
 # dbt engine for LOCAL work = dbt-fusion (the global binary). CI uses dbt-core
 # 1.11 as the stable gate (see .github/workflows/ci.yml). Override with `make DBT=...`.
@@ -57,9 +57,12 @@ snapshot:  ## Export prod marts -> committed parquet (app/snapshot/)
 export-web:  ## Export marts + briefing -> web/public/data/anchor.json (the tour surface's bundle)
 	python app/export_web.py
 
-# A briefing failure halts the chain before the exports — neither committed
-# artifact ever ships a partially-fresh state (strict failure policy by design).
-refresh: ingest build-prod briefing snapshot export-web  ## Full daily pipeline: ingest -> build -> briefing -> snapshot -> web bundle
+public-refresh:  ## Briefing (only for a new settled date) -> validated web bundle; no-op on holidays
+	python scripts/public_refresh.py
+
+# The briefing now lives inside public-refresh (it runs only for a new settled date and
+# its failure does not block the numbers). `snapshot` stays separate until it is removed.
+refresh: ingest build-prod public-refresh  ## Full daily pipeline: ingest -> build -> briefing + web bundle
 
 dagster:  ## Launch the Dagster UI locally (asset graph at http://localhost:3000)
 	@mkdir -p $(DAGSTER_HOME)

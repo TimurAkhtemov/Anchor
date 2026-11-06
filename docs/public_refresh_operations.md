@@ -76,3 +76,36 @@ gh secret set BQ_SA_KEY < ~/.config/anchor/anchor-public-refresh.json
 
 Then trigger the workflow once and watch for permission errors. Afterwards, delete any
 copies of the key you no longer need. Keep the key file outside the repo at all times.
+
+## Routine operations: the weekday refresh
+
+`.github/workflows/public-refresh.yml` runs Tue-Sat 02:45 UTC (Mon-Fri evenings, after
+the 21:30 ET settle). It only triggers `make` targets; the logic is in
+`scripts/public_refresh.py`. Order: ingest -> `dbt build --target prod` -> briefing (only
+if the settled date is new or the committed bundle has no briefing) -> export to a temp
+file -> validate -> replace the bundle -> web build + browser tests -> one commit that
+touches only `web/public/data/anchor.json` -> Vercel deploys.
+
+Required repo secrets: `BQ_SA_KEY` (the public service account key), `FRED_API_KEY`,
+`ANTHROPIC_API_KEY`. The workflow never references the real world.
+
+### What each outcome means
+
+- **Green, no commit** (holiday, or the date and briefing already published): nothing new,
+  nothing spent. Normal.
+- **Green, commit with no briefing**: the briefing step failed (log shows
+  `WARNING: briefing failed`). Numbers published; the next run (or a manual dispatch)
+  retries the briefing because the bundle has none for that date.
+- **Red at ingest or dbt build**: bad data or an outage upstream. Nothing was changed; the
+  site keeps the previous bundle. Fix and re-run.
+- **Red at "Briefing + export + validate"**: bundle validation failed (non-demo ticker,
+  empty section, or settled date outside 0-4 days old). The committed bundle is untouched.
+  A date that is too old usually means ingestion silently pulled stale prices.
+- **Red at web build or browser tests**: the new bundle broke the site; nothing is
+  committed, so the live site is unchanged.
+
+### Dry run
+
+Actions -> Public refresh -> Run workflow, set `publish` to `false`. The whole pipeline
+runs, including the briefing (it costs one model call), but nothing is committed.
+Scheduled runs always publish.
