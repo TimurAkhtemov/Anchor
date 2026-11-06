@@ -22,6 +22,12 @@ def test_private_steps_never_export_public_artifacts(tmp_path):
     assert all("export_web" not in command for command in commands)
 
 
+def test_private_market_step_uses_real_world(tmp_path):
+    steps = build_steps(Path("/runtime/python"), Path("/runtime/dbt"), tmp_path)
+    market = next(step for step in steps if step.name == "market_prices")
+    assert "--world real" in " ".join(market.command)
+
+
 def test_private_steps_can_temporarily_skip_briefing(tmp_path):
     steps = build_steps(
         Path("/runtime/python"),

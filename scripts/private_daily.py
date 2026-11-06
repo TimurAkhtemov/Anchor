@@ -144,7 +144,7 @@ def build_steps(
     steps = [
         Step("snaptrade_holdings", tuple(holdings)),
         Step("fred", (str(python), "ingestion/ingest_fred.py")),
-        Step("market_prices", (str(python), "ingestion/ingest_yfinance.py")),
+        Step("market_prices", (str(python), "ingestion/ingest_yfinance.py", "--world", "real")),
         Step(
             "private_marts",
             (
