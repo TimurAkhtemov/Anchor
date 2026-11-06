@@ -1,6 +1,6 @@
 # Anchor — Handoff
 
-_Last updated: 2026-09-18._ The lean "current state + what's next" pointer. The
+_Last updated: 2026-11-06._ The lean "current state + what's next" pointer. The
 **`README.md` is the canonical project doc** (pitch, design decisions, limitations,
 roadmap); the full inventory is `docs/architecture.md`; commands are `docs/setup.md`;
 working style is `CLAUDE.md`. This file holds only what those don't: where things stand
@@ -14,18 +14,23 @@ today, operator steps still owed, deviations from the locked designs, and gotcha
   LLM briefing (PRs #5–#7), the immersive web tour (#8), and Daily Note phase ① (#9).
 - **Landed 2026-09-18:** private daily ops (#10), Dagster+ Serverless deployment (#12),
   and a web-test fix (#11).
-- **Private daily refresh is operating.** LaunchAgents reinstalled from this checkout
-  2026-09-18 (Mon–Fri 21:30 ET; the old iCloud-synced `~/Desktop` worktree is removed).
-  A manual `refresh --skip-briefing` that day passed `prod-private` 154/154 with data
-  as of 2026-09-17 — the first private success since 2026-08-29, after the old
-  18:30 Tue–Sat schedule raced mutual-fund NAVs and failed ~13 of 18 runs. The first
-  *scheduled* run, and the first with the briefing step, had not yet been observed.
+- **Private daily refresh is operating** (LaunchAgents from this checkout, Mon–Fri
+  21:30 ET). Since 2026-09-18 the data steps have passed nightly (154/154), but the
+  **briefing step failed every night until 2026-11-06**: `.env` still named
+  `gemma4:31b`, which had been removed from Ollama (`404`). Fixed by pointing the
+  briefing at the resident llama-server (#16); verified end to end on the real
+  portfolio the same day (first attempt passed the validator).
+- **Landed 2026-11-06:** 60 s wall-clock deadline on every yfinance call (#15);
+  llama-server provider + validation retries with rejection feedback (#16); gain
+  since purchase shown next to market value, horizon column relabeled "Price Return"
+  (#17). Local `.env` now: `ANCHOR_BRIEFING_PROVIDER=llama-server`.
 - Serverless is *code-complete but not yet operating* — see the next section.
 
 ## Operator steps still owed (user-owned)
 
-1. **Confirm the first scheduled private run** with `make private-status` (expect
-   `state: success` and a fresh briefing in the localhost dashboard).
+1. **Confirm the next scheduled private run** with `make private-status` (expect
+   `state: success`; the 2026-11-06 scheduled run had not yet happened when the
+   briefing fix landed).
 2. **Activate Dagster+ Serverless** per `docs/dagster_serverless_operations.md`. The
    deploy workflow is dormant until repo variable `DAGSTER_CLOUD_ORGANIZATION` (+ secret
    `DAGSTER_CLOUD_API_TOKEN`) is set — runbook step 1.
@@ -63,6 +68,13 @@ deployment; the `AnthropicProvider` is dormant-but-ready and structurally demo-o
   pinned exact expectations against the committed bundle, whose briefing is
   LLM-generated; every refresh broke CI. Exact pins now use
   `web/tests/fixtures/anchor-2026-07.json`.
+- **A model name in `.env` is a dependency.** Ollama models get pruned; the briefing
+  then 404s nightly and the chain halts before the status file updates, so
+  `make private-status` reports a stale `data_as_of` even though the marts are fresh.
+  llama-server serves one fixed model and ignores the request's name, which removes
+  that failure mode.
+- **yfinance's 30 s timeout is not a wall-clock bound.** Calls stalled 4–15 min with 0
+  bytes; `call_with_deadline` in `ingestion/ingest_yfinance.py` is the real cap.
 - **CI builds share one `dbt_ci` dataset.** Concurrent runs double-load seeds and fail
   `unique` tests spuriously; the build job now has a cross-ref concurrency group.
 
@@ -96,6 +108,9 @@ From `docs/make_it_real_design.md`:
 - **The private refresh log can contain the FRED API key** (a failed request's URL is
   logged verbatim). It stays in gitignored `var/`, but the log sanitizer covers only
   SnapTrade SDK errors today.
+- **Two local LLM servers hold the same 35B model** when both are warm (Ollama for the
+  meeting recorder, llama-server for pi/Pendant + Anchor). Ollama is no longer needed
+  by Anchor; drop it from Anchor's docs once nothing else depends on it.
 - **Streamlit:** restarting the server drops open tabs' connections — hard-refresh.
 - The `dbt_timurakhtemov` dev sandbox still holds orphaned dbt-tutorial tables; harmless.
 
