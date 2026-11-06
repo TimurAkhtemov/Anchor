@@ -478,3 +478,103 @@ def test_held_tickers_excludes_cash_and_source_valued():
         ]
     )
     assert briefing.held_tickers(composition) == ["AAPL", "BND"]
+
+
+# --- 5. validation retries + llama-server provider ---------------------------------
+
+
+class SequenceProvider(FakeProvider):
+    """Returns successive canned outputs; records every prompt."""
+
+    def __init__(self, outputs):
+        super().__init__(outputs[0])
+        self.outputs = list(outputs)
+        self.prompts = []
+
+    def generate(self, system, prompt, *, format_schema=None):
+        self.prompts.append(prompt)
+        self.system, self.prompt, self.format_schema = system, prompt, format_schema
+        return self.outputs.pop(0)
+
+
+def _bad_tour():
+    bad = [dict(s) for s in GOOD_STEPS]
+    bad[4] = {**bad[4], "narration": "TICKR surged 77.77% overnight.", "figures": ["77.77%"]}
+    return json.dumps({"steps": bad})
+
+
+def test_generate_retries_with_rejection_feedback_then_writes():
+    provider = SequenceProvider([_bad_tour(), GOOD_TOUR])
+    client = FakeBQClient(_marts())
+
+    summary = briefing.generate("demo", provider, client, skip_news=True)
+
+    assert len(provider.prompts) == 2
+    assert briefing.REJECTION_HEADER not in provider.prompts[0]
+    assert briefing.REJECTION_HEADER in provider.prompts[1]
+    assert "77.77" in provider.prompts[1]  # the validator's verdict is fed back
+    assert len(client.loads) == 1  # written exactly once, after the good attempt
+    assert summary["steps"] == 6
+
+
+def test_generate_gives_up_after_max_attempts_and_never_writes():
+    provider = SequenceProvider([_bad_tour(), _bad_tour(), _bad_tour()])
+    client = FakeBQClient(_marts())
+    with pytest.raises(briefing.ValidationError, match="all 3 attempts"):
+        briefing.generate("demo", provider, client, skip_news=True, max_attempts=3)
+    assert len(provider.prompts) == 3
+    assert client.loads == []
+
+
+def test_generate_attempts_env_override(monkeypatch):
+    monkeypatch.setenv("ANCHOR_BRIEFING_ATTEMPTS", "1")
+    provider = SequenceProvider([_bad_tour()])
+    with pytest.raises(briefing.ValidationError, match="all 1 attempts"):
+        briefing.generate("demo", provider, FakeBQClient(_marts()), skip_news=True)
+
+
+def test_build_provider_llama_server_is_local(monkeypatch):
+    monkeypatch.setenv("ANCHOR_BRIEFING_PROVIDER", "llama-server")
+    monkeypatch.setenv("ANCHOR_LLAMA_SERVER_HOST", "http://127.0.0.1:9999/")
+    provider = briefing.build_provider("real")  # local -> allowed for real
+    assert isinstance(provider, briefing.LlamaServerProvider)
+    assert provider.is_local is True
+    assert provider.host == "http://127.0.0.1:9999"
+
+
+def test_llama_server_provider_request_shape(monkeypatch):
+    import requests
+
+    calls = {}
+
+    class Resp:
+        def __init__(self, payload):
+            self._p = payload
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return self._p
+
+    def fake_get(url, timeout):
+        calls["get"] = url
+        return Resp({"data": [{"id": "qwen3.6-35b-a3b"}]})
+
+    def fake_post(url, json, timeout):
+        calls["post"] = (url, json)
+        return Resp({"choices": [{"message": {"content": ' {"steps": []} ', "reasoning_content": "…"}}]})
+
+    monkeypatch.setattr(requests, "get", fake_get)
+    monkeypatch.setattr(requests, "post", fake_post)
+
+    provider = briefing.LlamaServerProvider(host="http://h:1")
+    out = provider.generate("SYS", "PROMPT", format_schema={"type": "object"})
+
+    assert out == '{"steps": []}'
+    assert provider.model == "qwen3.6-35b-a3b"  # the served id, not the request's
+    url, body = calls["post"]
+    assert url == "http://h:1/v1/chat/completions"
+    assert body["messages"][0] == {"role": "system", "content": "SYS"}
+    assert body["response_format"]["type"] == "json_schema"
+    assert body["response_format"]["json_schema"]["schema"] == {"type": "object"}
