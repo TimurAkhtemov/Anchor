@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from datetime import date
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from app.bundle_validation import BundleValidationError, allowed_tickers
 from app.export_web import export_web
 from scripts.public_refresh import (
     RefreshResult,
+    default_run_briefing,
     main,
     refresh,
     should_generate_briefing,
@@ -99,6 +101,20 @@ def test_should_generate_briefing_rules():
     assert should_generate_briefing(NEW, {"as_of_calendar": {"as_of_date": OLD}, "briefing": {"x": 1}})
     assert should_generate_briefing(NEW, {"as_of_calendar": {"as_of_date": NEW}, "briefing": None})
     assert not should_generate_briefing(NEW, {"as_of_calendar": {"as_of_date": NEW}, "briefing": {"x": 1}})
+
+
+def test_older_mart_date_fails(tmp_path):
+    with pytest.raises(BundleValidationError, match="older"):
+        should_generate_briefing(OLD, {"as_of_calendar": {"as_of_date": NEW}, "briefing": {"x": 1}})
+    path = tmp_path / "anchor.json"
+    _write_bundle(path, NEW)
+    before = path.read_bytes()
+    client = FakeClient(as_of=OLD, briefing_date=OLD)
+    run = Briefing(client)
+    with pytest.raises(BundleValidationError, match="older"):
+        refresh(client, path, run, today=TODAY)
+    assert run.calls == 0
+    assert path.read_bytes() == before
 
 
 def test_new_date_generates_briefing(tmp_path):
@@ -228,3 +244,63 @@ def test_workflow_never_touches_real_world():
     assert "publish" in text and "2-6" in text
     assert "git add web/public/data/anchor.json" in text
     assert "--force" not in text
+
+
+def test_briefing_subprocess_has_a_timeout(monkeypatch):
+    seen = {}
+
+    def fake_run(command, **kwargs):
+        seen.update(kwargs)
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+    monkeypatch.setattr("scripts.public_refresh.subprocess.run", fake_run)
+    with pytest.raises(subprocess.TimeoutExpired):
+        default_run_briefing()
+    assert seen["timeout"] == 900
+
+
+def test_briefing_timeout_still_publishes_numbers(tmp_path, monkeypatch):
+    def fake_run(command, **kwargs):
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+    monkeypatch.setattr("scripts.public_refresh.subprocess.run", fake_run)
+    path = tmp_path / "anchor.json"
+    _write_bundle(path, OLD)
+    result = refresh(FakeClient(as_of=NEW), path, default_run_briefing, today=TODAY)
+    assert result == RefreshResult(changed=True, as_of=NEW, briefing_status="failed")
+    assert json.loads(path.read_text())["as_of_calendar"]["as_of_date"] == NEW
+
+
+def _main_with_failed_briefing(tmp_path, monkeypatch):
+    client = FakeClient(as_of=NEW)
+    monkeypatch.setattr("scripts.public_refresh.make_client", lambda: client)
+    monkeypatch.setattr("scripts.public_refresh.default_run_briefing", Briefing(client, fail=True))
+    monkeypatch.setattr("scripts.public_refresh.BUNDLE_PATH", tmp_path / "anchor.json")
+    monkeypatch.setattr("scripts.public_refresh.date", type("D", (), {"today": staticmethod(lambda: TODAY)}))
+    main()
+
+
+def test_failed_briefing_emits_a_workflow_warning(tmp_path, monkeypatch, capsys):
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+    _main_with_failed_briefing(tmp_path, monkeypatch)
+    assert "::warning::" in capsys.readouterr().out
+
+
+def test_failed_briefing_writes_the_step_summary(tmp_path, monkeypatch):
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    _main_with_failed_briefing(tmp_path, monkeypatch)
+    assert "Briefing failed" in summary.read_text()
+
+
+def test_successful_briefing_emits_no_warning(tmp_path, monkeypatch, capsys):
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    client = FakeClient(as_of=NEW)
+    monkeypatch.setattr("scripts.public_refresh.make_client", lambda: client)
+    monkeypatch.setattr("scripts.public_refresh.default_run_briefing", Briefing(client))
+    monkeypatch.setattr("scripts.public_refresh.BUNDLE_PATH", tmp_path / "anchor.json")
+    monkeypatch.setattr("scripts.public_refresh.date", type("D", (), {"today": staticmethod(lambda: TODAY)}))
+    main()
+    assert "::warning::" not in capsys.readouterr().out
+    assert not summary.exists()

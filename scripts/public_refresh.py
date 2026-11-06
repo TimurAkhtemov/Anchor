@@ -31,7 +31,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from app.bundle_validation import validate_bundle  # noqa: E402
+from app.bundle_validation import BundleValidationError, validate_bundle  # noqa: E402
 from app.export_web import BUNDLE_PATH, PROJECT, PUBLIC_DATASET, export_web  # noqa: E402
 
 
@@ -42,11 +42,26 @@ class RefreshResult:
     briefing_status: Literal["generated", "reused", "failed"]
 
 
+BRIEFING_TIMEOUT_SECONDS = 900
+
+
+def _parse_date(value) -> date:
+    return date.fromisoformat(str(value)[:10])
+
+
 def should_generate_briefing(mart_as_of: str, bundle: dict | None) -> bool:
     if not bundle:
         return True
     bundle_as_of = (bundle.get("as_of_calendar") or {}).get("as_of_date")
-    return str(bundle_as_of) != str(mart_as_of) or not bundle.get("briefing")
+    if bundle_as_of is None:
+        return True
+    mart_date, bundle_date = _parse_date(mart_as_of), _parse_date(bundle_as_of)
+    if mart_date < bundle_date:
+        # Never spend a model call to publish older numbers over newer ones.
+        raise BundleValidationError(
+            f"mart as-of {mart_date} is older than the committed bundle's {bundle_date}"
+        )
+    return mart_date > bundle_date or not bundle.get("briefing")
 
 
 def _load(path: Path) -> dict | None:
@@ -99,9 +114,11 @@ def refresh(
 
 def default_run_briefing() -> None:
     """Run the briefing CLI with the current interpreter; logs stream through."""
+    # A hang raises TimeoutExpired, which `refresh` treats as a briefing failure.
     subprocess.run(
         [sys.executable, str(REPO_ROOT / "app" / "generate_briefing.py"), "--portfolio", "demo"],
         check=True,
+        timeout=BRIEFING_TIMEOUT_SECONDS,
     )
 
 
@@ -116,6 +133,16 @@ def main() -> None:
     print(
         f"as_of={result.as_of} changed={result.changed} briefing={result.briefing_status}"
     )
+    if result.briefing_status == "failed":
+        message = (
+            f"Briefing failed for {result.as_of}; numbers published without one. "
+            "The next run retries it."
+        )
+        print(f"::warning::{message}")
+        summary = os.environ.get("GITHUB_STEP_SUMMARY")
+        if summary:
+            with open(summary, "a") as handle:
+                handle.write(f"**Warning:** {message}\n")
     output = os.environ.get("GITHUB_OUTPUT")
     if output:
         with open(output, "a") as handle:
