@@ -84,8 +84,8 @@ copies of the key you no longer need. Keep the key file outside the repo at all 
 
 ## Routine operations: the weekday refresh
 
-`.github/workflows/public-refresh.yml` runs Tue-Sat 02:45 UTC (Mon-Fri evenings, after
-the 21:30 ET settle). It only triggers `make` targets; the logic is in
+`.github/workflows/public-refresh.yml` runs Tue-Sat 10:00 UTC (05:00 EST / 06:00 EDT),
+settling the previous weekday's session. It only triggers `make` targets; the logic is in
 `scripts/public_refresh.py`. Order: ingest -> `dbt build --target prod` -> briefing (only
 if the settled date is new or the committed bundle has no briefing) -> export to a temp
 file -> validate -> replace the bundle -> web build + browser tests -> one commit that

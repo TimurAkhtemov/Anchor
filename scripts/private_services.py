@@ -45,8 +45,8 @@ def build_plists(
     private_data_dir: Path,
     *,
     npm: str,
-    hour: int = 21,
-    minute: int = 30,
+    hour: int = 6,
+    minute: int = 0,
 ) -> dict[str, dict]:
     env = _refresh_environment(repo, env_file, private_data_dir, npm)
     log_dir = repo / "var" / "logs"
@@ -61,7 +61,10 @@ def build_plists(
         "EnvironmentVariables": env,
         "StartCalendarInterval": [
             {"Weekday": weekday, "Hour": hour, "Minute": minute}
-            for weekday in range(1, 6)  # launchd: 0/7 = Sunday, 1 = Monday ... 5 = Friday
+            # Tue-Sat mornings settle the previous weekday's session. At 21:30 ET Yahoo
+            # can still serve blank closes (2026-11-10: 9 null bars); by 06:00 they are
+            # final, and ingestion drops the not-yet-settled current day before 21:30.
+            for weekday in range(2, 7)  # launchd: 0/7 = Sunday, 1 = Monday ... 6 = Saturday
         ],
         "ProcessType": "Background",
         "StandardOutPath": str(log_dir / "private_refresh.out.log"),

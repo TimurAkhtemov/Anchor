@@ -17,8 +17,8 @@ def test_launch_agents_are_private_and_weekday_only(tmp_path):
     refresh = _plists(tmp_path)[REFRESH_LABEL]
 
     assert refresh["ProgramArguments"][-1] == "refresh"
-    assert [entry["Weekday"] for entry in refresh["StartCalendarInterval"]] == [1, 2, 3, 4, 5]  # launchd weekdays: 1 = Monday
-    assert all(entry["Hour"] == 21 and entry["Minute"] == 30 for entry in refresh["StartCalendarInterval"])
+    assert [entry["Weekday"] for entry in refresh["StartCalendarInterval"]] == [2, 3, 4, 5, 6]  # launchd weekdays: 2 = Tuesday ... 6 = Saturday
+    assert all(entry["Hour"] == 6 and entry["Minute"] == 0 for entry in refresh["StartCalendarInterval"])
 
 
 def test_dashboard_binds_loopback_only(tmp_path):
