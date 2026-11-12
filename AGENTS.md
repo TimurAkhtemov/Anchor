@@ -2,18 +2,18 @@
 
 ## Project Structure & Module Organization
 
-Anchor follows a bronze -> silver -> gold -> serve flow. Python ingestion lives in `ingestion/`; demo holdings are in `data/`, while real inputs belong in gitignored `data/private/`. The dbt project under `transformation/` contains staging, intermediate, and mart models, plus macros, seeds, snapshots, and SQL tests. Dagster assets live in `orchestration/anchor_orchestration/`. The Streamlit app is in `app/`: data access stays behind `data.py`, shared visuals in `ui.py`, and committed demo parquet files in `snapshot/`. Python tests are under `tests/`; design material belongs in `docs/`.
+Anchor follows a bronze -> silver -> gold -> serve flow. Python ingestion lives in `ingestion/`; demo holdings are in `data/`, while real inputs belong in gitignored `data/private/`. The dbt project under `transformation/` contains staging, intermediate, and mart models, plus macros, seeds, snapshots, and SQL tests. The briefing generator, web bundle exporter, and bundle validation are in `app/`. The site is the Next.js static export in `web/` (read `web/AGENTS.md` first). Refresh runners and the LaunchAgent installer are in `scripts/`. `orchestration/` is the retired Dagster code location, kept as a record. Python tests are under `tests/`; design material belongs in `docs/`.
 
 ## Build, Test, and Development Commands
 
 - `make ingest-holdings-demo`: load `data/sample_portfolio.csv` into the demo source.
 - `make ingest`: refresh FRED and yfinance bronze tables in BigQuery.
 - `make build-prod`: install dbt packages, build models, and test public prod datasets.
-- `make refresh`: run market ingestion, the public prod build, and snapshot export; load holdings separately when needed.
+- `make refresh`: market ingestion, the public prod build, then the briefing and validated web bundle; load holdings separately when needed.
 - `make ingest-holdings-real && make build-private`: load private inputs and build isolated `anchor_*_private` datasets.
-- `python -m pytest tests/ -q`: run ingestion helper and snapshot-privacy tests.
-- `make run-demo` / `make run-real`: launch Streamlit in demo or private mode.
-- `make dagster`: launch the asset graph at `http://localhost:3000`.
+- `python -m pytest tests/ -q`: run the Python tests (ingestion, briefing, bundle validation, refresh runners).
+- `make dev-web`: run the site locally against the committed bundle.
+- `make refresh-private` / `make private-status`: run or inspect the local real-portfolio refresh.
 
 Run dbt commands from `transformation/`; dbt Fusion can mishandle seeds with `--project-dir`. Example: `dbt build --select marts`. CI uses dbt Core 1.11 and Python 3.12.
 
@@ -23,7 +23,7 @@ Use 4-space indentation, small Python modules, `snake_case` names, and comments 
 
 ## Testing Guidelines
 
-Name pytest functions `test_<behavior>`. Preserve dbt grain, relationship, and contract tests; add singular guardrails under `transformation/tests/` for business invariants. Validate warehouse changes with `dbt build` and dashboard changes in snapshot/demo plus affected live modes. Privacy changes must retain the committed-snapshot test.
+Name pytest functions `test_<behavior>`. Preserve dbt grain, relationship, and contract tests; add singular guardrails under `transformation/tests/` for business invariants. Validate warehouse changes with `dbt build` and site changes with `cd web && npm run build && npm run test:e2e`. Privacy changes must keep the bundle validation and leak-scanner tests.
 
 ## Commit & Pull Request Guidelines
 

@@ -1,7 +1,7 @@
 # Anchor pipeline — tool-agnostic steps.
 #
-# The orchestrator (GitHub Actions today, possibly Dagster/Prefect later) is just
-# a trigger over these targets; the pipeline logic lives here, not in YAML. A
+# The orchestrators (GitHub Actions for the public demo, a macOS LaunchAgent for the
+# private world) are just triggers over these targets; the pipeline logic lives here, not in YAML. A
 # future orchestrator calls the same `make` targets (or the underlying scripts) —
 # no rewrite.
 #
@@ -15,6 +15,8 @@
 # 1.11 as the stable gate (see .github/workflows/ci.yml). Override with `make DBT=...`.
 DBT ?= $(HOME)/.local/bin/dbt
 PRIVATE_PYTHON ?= $(CURDIR)/venv/bin/python
+# The repo venv when it exists (local), else whatever `python` is on PATH (CI).
+PYTHON ?= $(if $(wildcard $(CURDIR)/venv/bin/python),$(CURDIR)/venv/bin/python,python)
 
 DAGSTER_HOME ?= $(CURDIR)/orchestration/.dagster_home
 
@@ -22,8 +24,8 @@ help:  ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-12s %s\n", $$1, $$2}'
 
 ingest:  ## Pull bronze: FRED + yfinance -> BigQuery (full refresh)
-	python ingestion/ingest_fred.py
-	python ingestion/ingest_yfinance.py
+	$(PYTHON) ingestion/ingest_fred.py
+	$(PYTHON) ingestion/ingest_yfinance.py
 
 deps:  ## Install dbt packages
 	cd transformation && $(DBT) deps
@@ -32,10 +34,10 @@ build-prod: deps  ## dbt build + test into the prod marts (anchor_* datasets)
 	cd transformation && $(DBT) build --target prod
 
 ingest-holdings-demo:  ## Load the committed sample portfolio -> raw_holdings.holdings_demo
-	python ingestion/ingest_holdings.py --from-csv data/sample_portfolio.csv --portfolio demo
+	$(PYTHON) ingestion/ingest_holdings.py --from-csv data/sample_portfolio.csv --portfolio demo
 
 ingest-holdings-real:  ## Load a real Fidelity export + private fund classes (data/private/, gitignored)
-	python ingestion/ingest_holdings.py --from-csv data/private/fidelity_positions.csv --portfolio real \
+	$(PYTHON) ingestion/ingest_holdings.py --from-csv data/private/fidelity_positions.csv --portfolio real \
 		--fund-classifications data/private/fund_classifications_real.csv
 
 ingest-holdings-real-snaptrade:  ## Pull read-only live positions from SnapTrade -> private bronze
@@ -45,17 +47,17 @@ ingest-holdings-real-snaptrade:  ## Pull read-only live positions from SnapTrade
 build-private: deps  ## dbt build the REAL portfolio into the anchor_*_private datasets
 	cd transformation && $(DBT) build --target prod-private --vars '{holdings_source: real}'
 
-briefing:  ## Generate the LLM copilot briefing -> anchor_marts.copilot_briefing (needs Ollama running)
-	python app/generate_briefing.py --portfolio demo
+briefing:  ## Generate the LLM copilot briefing -> anchor_marts.copilot_briefing (provider from ANCHOR_BRIEFING_PROVIDER)
+	$(PYTHON) app/generate_briefing.py --portfolio demo
 
 briefing-real:  ## Same, into anchor_marts_private (local LLM enforced in code)
-	python app/generate_briefing.py --portfolio real
+	$(PYTHON) app/generate_briefing.py --portfolio real
 
 export-web:  ## Export marts + briefing -> web/public/data/anchor.json (the tour surface's bundle)
-	python app/export_web.py
+	$(PYTHON) app/export_web.py
 
 public-refresh:  ## Briefing (only for a new settled date) -> validated web bundle; no-op on holidays
-	python scripts/public_refresh.py
+	$(PYTHON) scripts/public_refresh.py
 
 # The briefing lives inside public-refresh (it runs only for a new settled date and
 # its failure does not block the numbers).

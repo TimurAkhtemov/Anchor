@@ -5,11 +5,12 @@
 read in the context of the tier above it. You don't look at a stock's move in isolation;
 you read it under its sector, and its sector under the macro regime.
 
-**[Live dashboard](https://anchor-dashboard.streamlit.app)** ·
+**[Live site](https://anchor-pi-five.vercel.app)** ·
 **[dbt docs & lineage](https://timurakhtemov.github.io/Anchor/)** ·
+[v1 Streamlit dashboard](https://anchor-dashboard.streamlit.app) ·
 [Architecture](docs/architecture.md) · [Setup](docs/setup.md)
 
-![Anchor dashboard: LLM briefing sidebar, macro regime cards, sector tier](docs/images/anchor-dashboard.png)
+![Anchor: the morning briefing headline, macro regime cards, and the sector tier](docs/images/anchor-dashboard.png)
 
 This is a portfolio project targeting analytics-engineering roles. The deliverable is
 the **build**: layered dbt modeling, deliberate design decisions, and honest treatment
@@ -17,20 +18,26 @@ of limitations, not just a working chart.
 
 ## What's here
 
-- **A full bronze → silver → gold → serve pipeline**, green at 154/154 dbt nodes
-  (20 models, 130 tests, 1 SCD2 snapshot, 2 seeds, 1 hook), deployed and documented.
+- **A full bronze → silver → gold → serve pipeline**, green at 155/155 dbt nodes
+  (20 models, 131 tests, 1 SCD2 snapshot, 2 seeds, 1 hook), deployed and documented.
 - **Dynamic, multi-asset holdings.** A real portfolio (SnapTrade live pull or Fidelity
   CSV) feeds the gold layer. Five asset classes route through one generic benchmark model
   to up to five comparison axes each.
 - **Structural privacy.** Demo and real portfolios build into physically separate
   BigQuery dataset families. A compile-time hook refuses to build a public target from
   real data. The public deploy cannot leak real holdings, even by mistake.
-- **A local-LLM daily briefing** (Ollama) generated from the gold marts into a
-  schema-validated tour script, served in the dashboard sidebar and as a Next.js
-  scroll-told tour in `web/`.
-- **The ops layer.** CI runs pytest, `dbt build`, and a Playwright smoke test on every
-  pull request. dbt docs publish to GitHub Pages. A Dagster `dagster-dbt` asset graph
-  runs ingestion, dbt, and the serve export as one lineage.
+- **A daily LLM briefing** generated from the gold marts into a schema-validated tour
+  script, with validation failures fed back for a retry. The public demo uses Claude
+  (Sonnet); the real portfolio uses a local model (Qwen via llama.cpp) and structurally
+  refuses any cloud provider.
+- **One Next.js site for both worlds** (`web/`, static export): the public demo on Vercel,
+  the real portfolio on localhost only. The serve layer began as a Streamlit dashboard;
+  that v1 is kept live, frozen at its last demo data, on the `streamlit-v1` branch.
+- **The ops layer.** CI runs pytest, `dbt build`, and Playwright tests on every pull
+  request. dbt docs publish to GitHub Pages. A weekday GitHub Actions job (ingest → dbt →
+  briefing → validate → web build + tests) commits only the data bundle, and Vercel
+  deploys it. It runs on a narrow service account that is provably denied every private
+  table.
 - **Private daily operation, local only.** A Tue-Sat 06:00 ET macOS LaunchAgent re-pulls
   read-only SnapTrade holdings, refreshes market data, rebuilds the isolated
   `anchor_*_private` marts, and regenerates the local briefing. The real dashboard is
@@ -109,8 +116,10 @@ Surfacing these is the point. Analytical maturity is knowing what your numbers d
 - **Co-movement is descriptive and noisy.** A trailing correlation, not a sensitivity.
 - **Freshness rides yfinance.** Free, scraped, no SLA. Migration path in
   `docs/ingestion_roadmap.md`.
-- **The briefing table sits outside dbt lineage**, and the public Dagster+ Serverless
-  schedule is built but not yet activated, so the demo refresh is still hand-triggered.
+- **The briefing table sits outside dbt lineage.**
+- **Old commits still mention a few real holdings** as examples in design docs. The
+  current tree is scanned clean (`scripts/scan_for_private_tickers.py`); history was not
+  rewritten.
 
 ## Roadmap
 
@@ -119,21 +128,23 @@ CI, orchestration) and the multi-asset "make it real" milestone (`handoff.md` re
 what shipped and where it deviated from `docs/make_it_real_design.md`). What's next
 deepens trust and reflection rather than the speed of market feedback:
 
-1. **Unattended post-close operation** on Dagster+ Serverless, demo-only by construction.
-   The deployment config, build-time manifest packaging, snapshot validation, and atomic
-   publication are implemented (`docs/dagster_serverless_operations.md`); activating the
-   live schedule is the remaining operator step.
-2. **Reliable settled end-of-day data** per `docs/ingestion_roadmap.md`.
-3. **Grounded portfolio history**: allocation drift, concentration, contribution.
-4. **The Daily Note briefing** (`docs/briefing_daily_note_design.md`, phase 1 shipped).
-5. **Intent and reflection**: theses, target allocations, invalidation criteria.
+1. **Reliable settled end-of-day data** per `docs/ingestion_roadmap.md`.
+2. **Grounded portfolio history**: allocation drift, concentration, contribution.
+3. **The Daily Note briefing** (`docs/briefing_daily_note_design.md`, phase 1 shipped).
+4. **Intent and reflection**: theses, target allocations, invalidation criteria.
+
+**On orchestration.** Anchor was orchestrated with Dagster (`dagster-dbt`, one asset graph
+from ingestion through dbt to the serve export, with a Dagster+ Serverless deployment
+built). Once the serve layer became one static bundle, the whole job was a straight line
+of `make` targets, so a GitHub Actions trigger (public) and a macOS LaunchAgent (private)
+replaced it. The asset graph remains in `orchestration/` as a record; nothing schedules it.
 
 ## Tech stack
 
 BigQuery · dbt (fusion locally, core in CI; `dbt_utils`, `codegen`) · Python ingestion
-(`requests`, `yfinance`, `pandas`, SnapTrade SDK) · Streamlit + Altair · Ollama
-(`gemma4:31b`) · Next.js static export + Playwright · Dagster (`dagster-dbt`) · GitHub
-Actions
+(`requests`, `yfinance`, `pandas`, SnapTrade SDK) · Next.js static export + Playwright ·
+Vercel · Claude API (public briefing) · llama.cpp / Qwen (private briefing) · GitHub
+Actions · macOS launchd · earlier: Streamlit + Altair, Dagster (`dagster-dbt`)
 
 ## Repo layout
 
@@ -141,9 +152,10 @@ Actions
 ingestion/       bronze ingestion: FRED, yfinance, holdings loader + SnapTrade
 transformation/  the dbt project: models (staging / intermediate / marts), macros,
                  seeds (benchmark axes, fund classes), snapshots, singular tests
-app/             Streamlit serve layer, data seam, LLM briefing generator, exporters
-web/             Next.js tour surface (static export, Playwright tests)
-orchestration/   Dagster code location: ingestion + dbt + snapshot as one asset graph
+app/             LLM briefing generator, web bundle exporter, bundle validation
+web/             Next.js site (static export, Playwright tests), demo and private builds
+scripts/         public/private refresh runners, LaunchAgent installer, leak scanners
+orchestration/   retired Dagster code location, kept as a record (see Roadmap)
 data/            committed sample portfolio; private/ (real inputs, gitignored)
 docs/            architecture, setup, and the design documents behind each decision
 ```

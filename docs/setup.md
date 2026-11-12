@@ -20,9 +20,9 @@ dbt build                  # dev: into the personal sandbox (demo holdings by de
 dbt build --target prod    # prod: into the anchor_* datasets
 cd ..
 
-# 3. serve layer (reads anchor_marts)
-pip install -r app/requirements.txt
-streamlit run app/app.py   # needs GOOGLE_APPLICATION_CREDENTIALS pointing at the SA key
+# 3. serve layer: export the bundle, then run the site
+make export-web            # marts -> web/public/data/anchor.json
+make dev-web               # Next.js dev server against that bundle
 ```
 
 Run dbt from inside `transformation/`. The local engine is dbt-fusion, whose
@@ -36,7 +36,7 @@ dbt show --inline "select * from {{ ref('holdings_benchmarks') }}" --limit 20
 
 ## Make targets
 
-The Makefile is the tool-agnostic step list; Dagster wraps the same steps as assets.
+The Makefile is the tool-agnostic step list; GitHub Actions and the LaunchAgent only trigger it.
 
 | Target | What it does |
 |---|---|
@@ -45,14 +45,14 @@ The Makefile is the tool-agnostic step list; Dagster wraps the same steps as ass
 | `make ingest-holdings-real` | Fidelity export + private fund classes → `raw_holdings.holdings_real` |
 | `make build-prod` | `dbt build --target prod` (demo holdings, public datasets) |
 | `make build-private` | `dbt build --target prod-private --vars '{holdings_source: real}'` |
-| `make briefing` / `make briefing-real` | generate the LLM briefing (needs local Ollama) |
-| `make snapshot` | export prod marts → committed parquet in `app/snapshot/` |
+| `make briefing` / `make briefing-real` | generate the LLM briefing (`briefing-real` is local-only by construction) |
 | `make export-web` | export marts + briefing → `web/public/data/anchor.json` |
-| `make refresh` | the full demo chain: ingest → build-prod → briefing → snapshot → export-web |
-| `make dagster` | launch the Dagster UI locally (asset graph at localhost:3000) |
+| `make public-refresh` | briefing (new settled date only) → validated bundle; what the GitHub job runs |
+| `make refresh` | the full demo chain: ingest → build-prod → public-refresh |
+| `make refresh-private` / `make private-status` | the real-portfolio chain, and its last result |
+| `make dagster` | the retired Dagster asset graph, kept as a record (localhost:3000) |
 
-`make refresh` only touches the demo world. The briefing step needs Ollama running and
-its failure halts the chain before the snapshot exports, by design. Real-portfolio builds
+`make refresh` only touches the demo world. Real-portfolio builds
 are never part of any scheduled *public* path: they run manually (`make build-private`) or
 through the separate local-only weekday service described below.
 

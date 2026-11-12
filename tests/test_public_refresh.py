@@ -315,5 +315,16 @@ def test_workflow_secrets_are_step_scoped_and_key_removed_before_node():
     node = text.index("actions/setup-node")
     assert removal < node
     assert text.index("make public-refresh") < removal
-    # nothing after the removal step may see a secret either
-    assert "secrets." not in text[removal:]
+    # nothing after the removal step may see a secret either, except the commit step's
+    # GITHUB_TOKEN, which only that step's `git push` receives (step-scoped env)
+    commit = text.index("- name: Commit bundle")
+    assert "secrets." not in text[removal:commit]
+    assert text[commit:].count("secrets.") == 1
+    assert "secrets.GITHUB_TOKEN" in text[commit:]
+
+
+def test_checkout_does_not_persist_the_token():
+    """npm install scripts and Playwright must not find a token in .git/config."""
+    text = WORKFLOW.read_text()
+    checkout = text.index("actions/checkout@")
+    assert "persist-credentials: false" in text[checkout:checkout + 200]
