@@ -53,6 +53,10 @@ deployment; the `AnthropicProvider` is dormant-but-ready and structurally demo-o
   `SESSION_SETTLED_ET` in `ingestion/ingest_yfinance.py`; the LaunchAgent and the Dagster
   cron must match it. Before the cutoff, ingestion drops today's bars, so a daytime
   `make ingest` is safe and yields yesterday's settled session.
+- **Schedules moved to the morning (2026-11-11).** Even 21:30 ET raced Yahoo: on
+  2026-11-10, 9 closes were still blank at 21:31 and the private build failed both
+  guardrails above. Private now runs Tue-Sat 06:00 ET, public Tue-Sat 10:00 UTC; the
+  cutoff constant stays, so a run before 21:30 still yields yesterday's session.
 - **launchd `Weekday` is 0/7 = Sunday, 1 = Monday.** `range(2, 7)` was Tue–Sat, and the
   test pinned the same mistake.
 - **Pin on frozen fixtures, assert invariants on live data.** `web/tests/resolve.spec.ts`

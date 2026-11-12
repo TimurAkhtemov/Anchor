@@ -4,7 +4,8 @@
 # The logic lives in the Makefile and scripts/public_refresh.py; this file is a trigger.
 # Demo world only: the credential is the narrow public service account.
 #
-# 02:45 UTC Tue-Sat = 21:45 EST / 22:45 EDT on Mon-Fri evenings, past the 21:30 ET settle.
+# 10:00 UTC Tue-Sat = 05:00 EST / 06:00 EDT, settling the previous weekday's session.
+# Evening runs raced Yahoo: at 21:30 ET some closes can still be blank.
 # Commits made with GITHUB_TOKEN do not trigger other workflows, so this job validates
 # the bundle and runs the web build + tests itself before committing.
 
@@ -12,7 +13,7 @@ name: Public refresh
 
 on:
   schedule:
-    - cron: '45 2 * * 2-6'
+    - cron: '0 10 * * 2-6'
   workflow_dispatch:
     inputs:
       publish:

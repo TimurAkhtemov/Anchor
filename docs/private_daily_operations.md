@@ -21,7 +21,7 @@ to `127.0.0.1:8501`, the same address the Streamlit app used.
 
 | Service | Behavior |
 |---|---|
-| `com.timurakhtemov.anchor.private-refresh` | Weekdays at 21:30 America/New_York: SnapTrade → FRED/yfinance → private dbt build → local briefing → private bundle → private site → atomic swap |
+| `com.timurakhtemov.anchor.private-refresh` | Tue-Sat at 06:00 America/New_York (previous weekday's close): SnapTrade → FRED/yfinance → private dbt build → local briefing → private bundle → private site → atomic swap |
 | `com.timurakhtemov.anchor.private-dashboard` | `venv/bin/python scripts/private_static_server.py 8501 var/private_web/current`, serving <http://127.0.0.1:8501> while the user is logged in. It holds no secrets and reads no database. |
 
 The refresh uses a non-blocking file lock, so a delayed run cannot overlap the
