@@ -80,7 +80,7 @@ In the BigQuery database, the `raw_holdings` / `fund_classifications` schema wil
 In the Anchor UI, a small settings page or banner will appear if there are unverified funds:
 
 > ⚠️ **New Funds Detected**
-> We found a new fund in your portfolio (**GLDM**). We have classified it as **Commodity** (Rationale: *SPDR Gold MiniShares Trust holds physical gold bullion*).
+> We found a new fund in your portfolio (**GLD**). We have classified it as **Commodity** (Rationale: *SPDR Gold Shares holds physical gold bullion*).
 > `[ Approve ]` or `[ Change Classification ]`
 
 ---
