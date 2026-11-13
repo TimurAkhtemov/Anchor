@@ -574,10 +574,13 @@ published_at = publication.get("generated_at")
 status_text = f"Settled market data through {freshness['as_of_date']}"
 if published_at:
     status_text += f" · snapshot published {pd.to_datetime(published_at).strftime('%Y-%m-%d %H:%M UTC')}"
-if freshness["is_stale"]:
-    st.warning(f"Data refresh delayed — {status_text}. The last complete snapshot remains available.")
-else:
-    st.caption(status_text)
+# This branch is the archived v1 (Streamlit) build: its snapshot is frozen, so a
+# "refresh delayed" warning would be misleading. Point at the live successor instead.
+st.info(
+    "Archived v1 snapshot (Sept 2026). The live, daily-refreshed version is at "
+    "[anchor-pi-five.vercel.app](https://anchor-pi-five.vercel.app)."
+)
+st.caption(status_text)
 
 horizon = st.radio("Return horizon", list(HORIZONS), horizontal=True, index=0)
 hkey = HORIZONS[horizon]
