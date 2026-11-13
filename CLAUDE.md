@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Anchor is a macro-aware personal investment dashboard. The core product principle is a forced reading order: **macro environment → sector performance → individual holdings**. Each tier is read in the context of the one above it.
 
-Architecture: `FRED API + yfinance → bronze (BigQuery raw tables) → silver (dbt staging) → gold (dbt relationship-framed models) → serve (Streamlit)`
+Architecture: `FRED API + yfinance → bronze (BigQuery raw tables) → silver (dbt staging) → gold (dbt relationship-framed models) → serve (Next.js static site: public demo on Vercel, real portfolio on localhost)`
 
 This is a portfolio project targeting analytics engineering roles — demonstrating the full AE arc, not just pipeline plumbing.
 
@@ -48,40 +48,46 @@ dbt build                        # run + test together (dev sandbox; demo holdin
 dbt build --target prod          # materialize the prod datasets (anchor_*)
 dbt build --target prod-private --vars '{holdings_source: real}'   # real portfolio, isolated datasets
 
-# Serve layer (Streamlit dashboard, reads anchor_marts via the data seam)
-streamlit run app/app.py
-python app/export_snapshot.py    # refresh the committed snapshot the live demo reads
-python app/generate_briefing.py --portfolio demo   # LLM briefing -> copilot_briefing (needs Ollama running)
+# Briefing (provider from ANCHOR_BRIEFING_PROVIDER; real portfolio is local-only by construction)
+python app/generate_briefing.py --portfolio demo   # LLM briefing -> copilot_briefing
 
-# Web tour surface (web/ — Next.js static export; heed web/AGENTS.md before writing code there)
+# Serve layer (web/ — Next.js static export; heed web/AGENTS.md before writing code there)
 python app/export_web.py                      # refresh committed web/public/data/anchor.json (or: make export-web)
 cd web && npm run dev                         # local dev
 cd web && npm run build                       # static export -> web/out/ (what CI and Vercel run)
 cd web && npm run build && npm run test:e2e   # Playwright: resolver units + browser smoke (serves out/)
 
-# Pipeline steps (tool-agnostic; the Makefile is what Dagster wraps as assets)
-make ingest | make ingest-holdings-demo | make ingest-holdings-real | make build-prod | make build-private | make briefing | make briefing-real | make snapshot | make refresh
+# Pipeline steps (tool-agnostic; GitHub Actions and the LaunchAgent only trigger these)
+make ingest | make ingest-holdings-demo | make ingest-holdings-real | make build-prod | make build-private | make briefing | make briefing-real | make export-web | make public-refresh | make refresh | make refresh-private | make private-status
 ```
 
-Note: `make snapshot`/`make refresh` may need
-`GOOGLE_APPLICATION_CREDENTIALS=~/.dbt/anchor-bigquery-key.json` for `app/export_snapshot.py`
-unless Application Default Credentials are configured. `make refresh` only touches the
-demo world (ingest → build-prod → briefing → snapshot; the briefing step needs local
-Ollama, and its failure halts the chain before the snapshot exports — strict by design).
-Real-portfolio builds remain outside the scheduled **public** pipeline. They now run
-through a separate local-only weekday LaunchAgent (`scripts/private_daily.py`): SnapTrade
-→ market ingestion → `prod-private` → local briefing, with no private snapshot/export.
+Note: local BigQuery calls may need
+`GOOGLE_APPLICATION_CREDENTIALS=~/.dbt/anchor-bigquery-key.json` unless Application
+Default Credentials are configured. **Public demo:** `.github/workflows/public-refresh.yml`
+runs Tue-Sat 10:00 UTC on the narrow `anchor-public-refresh` service account (denied all
+private tables; `scripts/check_public_credential.py` proves it): ingest → `dbt build
+--target prod` → Claude briefing (only for a new settled date) → validated bundle → web
+build + Playwright → one commit touching only `web/public/data/anchor.json` → Vercel
+deploys. Runbook: `docs/public_refresh_operations.md`.
+**Private world:** a local-only Tue-Sat 06:00 ET LaunchAgent (`scripts/private_daily.py`):
+SnapTrade → market ingestion → `prod-private` → local briefing → private bundle and site
+in `var/`, served on `127.0.0.1:8501`. Nothing private is committed or exported.
 Use `--skip-briefing` for a single run when another local model workload is active. See
 `docs/private_daily_operations.md`. Optional `.env` config for the briefing:
-`ANCHOR_BRIEFING_PROVIDER` (`ollama` default; `anthropic` = cloud model, DEMO world only —
-a structural guard in `build_provider` hard-fails cloud + real before any network call;
-**scope: the cloud path is deferred until public deployment — everything stays local/Ollama
-for the MVP**, no API key in `.env` by design),
-`ANCHOR_BRIEFING_MODEL` (default `gemma4:31b` — won the post-ship A/B on verdict/attribution
-discipline; ~4 min/generation is fine at pipeline time), `OLLAMA_HOST`,
-`ANCHOR_BRIEFING_CLOUD_MODEL` (default `claude-opus-4-8`), `ANTHROPIC_API_KEY`.
+`ANCHOR_BRIEFING_PROVIDER` (`ollama` default; `llama-server` = the resident local
+llama.cpp service on `127.0.0.1:8080`, **what the private refresh uses** — serves one
+fixed model, ignores the model name; `anthropic` = Claude, **public demo only** (the
+GitHub job) — a structural guard in `build_provider` hard-fails cloud + real before any
+network call, and `private_daily.py` forces a local provider; the API key lives only in
+GitHub secrets and `~/.config/anchor/anthropic.env`, never `.env`),
+`ANCHOR_BRIEFING_MODEL` (Ollama only; default `qwen3.6:35b`), `OLLAMA_HOST`,
+`ANCHOR_BRIEFING_CLOUD_MODEL` (default `claude-sonnet-5-5`, ~$0.03–0.07/run), `ANTHROPIC_API_KEY`,
+`ANCHOR_LLAMA_SERVER_HOST`, `ANCHOR_BRIEFING_ATTEMPTS` (regenerate on validation failure
+with the validator's errors fed back; default 3).
 
-Live: dashboard → anchor-dashboard.streamlit.app · dbt docs → timurakhtemov.github.io/Anchor
+Live: site → anchor-pi-five.vercel.app · dbt docs → timurakhtemov.github.io/Anchor ·
+v1 Streamlit dashboard (frozen, branch `streamlit-v1`) → anchor-dashboard.streamlit.app.
+`orchestration/` (Dagster) is retired and kept as a record; nothing schedules it.
 
 ## Data sources
 
@@ -135,11 +141,11 @@ assembled from its narrations. The briefing's next evolution is designed and loc
 `docs/briefing_daily_note_design.md` (v3 "Daily Note" — active arc on
 `feat/briefing-daily-note`; read it before briefing/web work). Not in dbt
 lineage (documented limitation); the only served table whose absence the app tolerates
-(sidebar falls back to the deterministic v0 lines). Design:
+(the site renders without it). Design:
 `docs/llm_copilot_briefing_design.md`.
 
 **Lineage / contracts.**
-- `models/marts/_exposures.yml` declares the Streamlit dashboard and parquet snapshot export as downstream consumers of all served marts, including `portfolio_composition`.
+- `models/marts/_exposures.yml` declares the public web dashboard (the Vercel site, fed by `app/export_web.py`) as the downstream consumer of all served marts, including `portfolio_composition`.
 - `holdings_benchmarks` and `portfolio_composition` both have enforced dbt contracts; if their output columns/types drift, dbt should fail before the app silently breaks.
 - **Privacy isolation.** A `prod-private` target (`anchor_*_private` datasets) + `holdings_source` var (`demo` default) + a compile-time `on-run-start` hook (`assert_portfolio_isolation`) that fails the build if `holdings_source: real` is ever combined with a public target (`prod`/`ci`). The public contract structurally cannot be built from real data.
 
@@ -168,8 +174,7 @@ Holding % and benchmark % must be computed together in gold so each pairing is a
 
 **Dynamic portfolio ingestion is built** — the static watchlist is retired. A `raw_holdings` bronze dataset (`holdings_demo`/`holdings_real`, `ticker, quantity, cost_basis_total, as_of, source, …`) feeds the gold layer via SnapTrade (live Fidelity link) or a Fidelity CSV export; see `docs/make_it_real_design.md` for the locked design and `handoff.md` for what shipped and the honest deviations from it.
 
-Next follows the grounding-first sequence in the README: Dagster+ Serverless for the
-unattended post-close run, reliable settled EOD ingestion, portfolio history centered on
+Next follows the grounding-first sequence in the README: reliable settled EOD ingestion, portfolio history centered on
 allocation drift and contribution, a non-advisory contextual briefing, then intent and
 reflection tools. Brokers beyond Fidelity and multi-user (`user_id` + row-level
 isolation) are later platform expansion, not the next product milestone.

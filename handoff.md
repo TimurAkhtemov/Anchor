@@ -1,6 +1,6 @@
 # Anchor — Handoff
 
-_Last updated: 2026-09-18._ The lean "current state + what's next" pointer. The
+_Last updated: 2026-11-12._ The lean "current state + what's next" pointer. The
 **`README.md` is the canonical project doc** (pitch, design decisions, limitations,
 roadmap); the full inventory is `docs/architecture.md`; commands are `docs/setup.md`;
 working style is `CLAUDE.md`. This file holds only what those don't: where things stand
@@ -8,41 +8,49 @@ today, operator steps still owed, deviations from the locked designs, and gotcha
 
 ## Where things stand
 
-- **Bronze → silver → gold → serve is built, tested, and green.** CI on `main`
-  (2026-09-18): pytest + `dbt build --target ci` + Playwright all pass.
+- **Live and unattended (2026-11-12).** Public site <https://anchor-pi-five.vercel.app>
+  (Vercel, root `web/`), refreshed Tue-Sat 10:00 UTC by GitHub Actions on the narrow
+  `anchor-public-refresh` service account, briefing by Claude Sonnet. Private refresh
+  Tue-Sat 06:00 ET by LaunchAgent, local Qwen briefing, site on `127.0.0.1:8501`.
+  Streamlit (v1) is frozen on branch `streamlit-v1` at anchor-dashboard.streamlit.app;
+  Dagster is retired (PR #19).
 - **Both capstones shipped** (ops layer; "make it real" multi-asset holdings), plus the
   LLM briefing (PRs #5–#7), the immersive web tour (#8), and Daily Note phase ① (#9).
 - **Landed 2026-09-18:** private daily ops (#10), Dagster+ Serverless deployment (#12),
   and a web-test fix (#11).
-- **Private daily refresh is operating.** LaunchAgents reinstalled from this checkout
-  2026-09-18 (Mon–Fri 21:30 ET; the old iCloud-synced `~/Desktop` worktree is removed).
-  A manual `refresh --skip-briefing` that day passed `prod-private` 154/154 with data
-  as of 2026-09-17 — the first private success since 2026-08-29, after the old
-  18:30 Tue–Sat schedule raced mutual-fund NAVs and failed ~13 of 18 runs. The first
-  *scheduled* run, and the first with the briefing step, had not yet been observed.
-- Serverless is *code-complete but not yet operating* — see the next section.
+- **Private daily refresh is operating** (LaunchAgents from this checkout; Mon–Fri
+  21:30 ET until 2026-11-11, now Tue–Sat 06:00 ET, PR #20). Since 2026-09-18 the data steps have passed nightly (154/154), but the
+  **briefing step failed every night until 2026-11-06**: `.env` still named
+  `gemma4:31b`, which had been removed from Ollama (`404`). Fixed by pointing the
+  briefing at the resident llama-server (#16); verified end to end on the real
+  portfolio the same day (first attempt passed the validator).
+- **Landed 2026-11-06:** 60 s wall-clock deadline on every yfinance call (#15);
+  llama-server provider + validation retries with rejection feedback (#16); gain
+  since purchase shown next to market value, horizon column relabeled "Price Return"
+  (#17). Local `.env` now: `ANCHOR_BRIEFING_PROVIDER=llama-server`.
+- **Landed 2026-11-06 → 11-12:** one Next.js app for both worlds, Streamlit and Dagster
+  retired, Claude briefing for the demo (#19); morning schedules (#20); public service
+  account, Vercel, leak scanners, docs (this PR).
 
 ## Operator steps still owed (user-owned)
 
-1. **Confirm the first scheduled private run** with `make private-status` (expect
-   `state: success` and a fresh briefing in the localhost dashboard).
-2. **Activate Dagster+ Serverless** per `docs/dagster_serverless_operations.md`. The
-   deploy workflow is dormant until repo variable `DAGSTER_CLOUD_ORGANIZATION` (+ secret
-   `DAGSTER_CLOUD_API_TOKEN`) is set — runbook step 1.
-3. **Vercel connect for `web/`** + the public-URL swap.
+1. **Confirm the first morning runs**: `make private-status` after 06:00 ET, and a
+   `chore(data)` commit plus Vercel deploy after 10:00 UTC.
+2. **Old real-ticker rows in BigQuery time travel** (`dbt_ci`, dropped 2026-11-12) age
+   out after 7 days; accepted rather than shortening the window.
 
 ## What's next (README roadmap order)
 
-1. Unattended post-close operation — built; blocked only on operator step 2 (Dagster+).
-2. Reliable settled EOD data — `docs/ingestion_roadmap.md`, still deferred.
-3. Grounded portfolio history — allocation drift, concentration, contribution.
-4. **Daily Note phase ② — derived-signal marts** (`portfolio_rate_sensitivity`,
+1. Reliable settled EOD data — `docs/ingestion_roadmap.md`, still deferred.
+2. Grounded portfolio history — allocation drift, concentration, contribution.
+3. **Daily Note phase ② — derived-signal marts** (`portfolio_rate_sensitivity`,
    `holding_attribution`, concentration signals). The next dbt-heavy build; design is
    locked in `docs/briefing_daily_note_design.md`. Phases ③–⑤ follow it.
-5. Intent and reflection tools.
+4. Intent and reflection tools.
 
-Scope decision still in force: the briefing stays **local (Ollama)** until public
-deployment; the `AnthropicProvider` is dormant-but-ready and structurally demo-only.
+Scope decision in force: the real portfolio's briefing is local only (llama-server);
+the demo's uses Claude via `AnthropicProvider`, which `build_provider` refuses for real
+data.
 
 ## Lessons from the 2026-09-18 landing (each cost a red build)
 
@@ -63,6 +71,13 @@ deployment; the `AnthropicProvider` is dormant-but-ready and structurally demo-o
   pinned exact expectations against the committed bundle, whose briefing is
   LLM-generated; every refresh broke CI. Exact pins now use
   `web/tests/fixtures/anchor-2026-07.json`.
+- **A model name in `.env` is a dependency.** Ollama models get pruned; the briefing
+  then 404s nightly and the chain halts before the status file updates, so
+  `make private-status` reports a stale `data_as_of` even though the marts are fresh.
+  llama-server serves one fixed model and ignores the request's name, which removes
+  that failure mode.
+- **yfinance's 30 s timeout is not a wall-clock bound.** Calls stalled 4–15 min with 0
+  bytes; `call_with_deadline` in `ingestion/ingest_yfinance.py` is the real cap.
 - **CI builds share one `dbt_ci` dataset.** Concurrent runs double-load seeds and fail
   `unique` tests spuriously; the build job now has a cross-ref concurrency group.
 
@@ -96,6 +111,9 @@ From `docs/make_it_real_design.md`:
 - **The private refresh log can contain the FRED API key** (a failed request's URL is
   logged verbatim). It stays in gitignored `var/`, but the log sanitizer covers only
   SnapTrade SDK errors today.
+- **Two local LLM servers hold the same 35B model** when both are warm (Ollama for the
+  meeting recorder, llama-server for pi/Pendant + Anchor). Ollama is no longer needed
+  by Anchor; drop it from Anchor's docs once nothing else depends on it.
 - **Streamlit:** restarting the server drops open tabs' connections — hard-refresh.
 - The `dbt_timurakhtemov` dev sandbox still holds orphaned dbt-tutorial tables; harmless.
 

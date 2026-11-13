@@ -17,7 +17,7 @@ FRED API + yfinance + holdings (SnapTrade / Fidelity CSV)
    gold   — relationship-framed marts the dashboard reads
         │
         ▼
-  serve   — Streamlit dashboard (app/) · LLM briefing · Next.js tour (web/)
+  serve   — LLM briefing · web bundle · Next.js static site (web/)
 ```
 
 ## Namespaces: dev / prod and demo / real
@@ -88,11 +88,11 @@ to `anchor_snapshots`.
 
 **Contracts and lineage.** `holdings_benchmarks` and `portfolio_composition` carry
 enforced dbt contracts, so column or type drift fails the build before the app breaks.
-`models/marts/_exposures.yml` declares the Streamlit dashboard and the parquet snapshot
-export as downstream consumers. Source freshness thresholds are set on the FRED and
+`models/marts/_exposures.yml` declares the public web dashboard (via the web bundle
+export) as the downstream consumer. Source freshness thresholds are set on the FRED and
 yfinance sources.
 
-**Tests.** 130 tests across the project: uniqueness and not-null on composite grains,
+**Tests.** 131 tests across the project: uniqueness and not-null on composite grains,
 accepted values on every categorical, relationship tests between layers, and five singular
 guardrail tests in `tests/`:
 
@@ -106,53 +106,79 @@ guardrail tests in `tests/`:
 
 ## The serve layer
 
-**Streamlit dashboard (`app/`).** A single top-down page enforcing the reading order:
-macro regime and indicator cards → sector performance → holdings, each tier under the one
-above it. Live at [anchor-dashboard.streamlit.app](https://anchor-dashboard.streamlit.app).
+**One static site, two worlds (`web/`).** A Next.js static export in the "Morning paper"
+design: the briefing headline and summary, then macro regime and indicator cards →
+sector performance → holdings, each tier read under the one above it, with an optional
+guided reading. It renders one JSON bundle and has no backend and no credentials.
 
-- `app/data.py` is the data seam. The UI calls `data.get_*()` functions and never knows
-  the source. Every read goes through one cached `_read()` choke point with a `SOURCE`
-  switch: live BigQuery locally, the committed parquet snapshot (`app/snapshot/`) in the
-  public deploy. Swapping sources takes zero UI edits.
-- `app/ui.py` is the visual vocabulary: shared palette, chips, status pills, and Altair
-  sparklines so the three tiers read as one product.
+- **Public demo:** `web/public/data/anchor.json` (committed, demo world only) built and
+  deployed by Vercel at [anchor-pi-five.vercel.app](https://anchor-pi-five.vercel.app).
+- **Real portfolio:** the same app built against a private bundle in `var/` and served by
+  `scripts/private_static_server.py` on `127.0.0.1:8501` only. Nothing private is
+  committed.
+- `app/export_web.py` writes the bundle from the marts; `app/bundle_validation.py`
+  refuses a public bundle with any ticker outside the demo universe, an empty section,
+  or a settled date older than 4 days.
 - **Composition-driven holdings tier.** The UI iterates `portfolio_composition` grouped
-  by asset class and attaches each ticker's `holdings_benchmarks` rows by join:
-  master-detail on one entity, not a relationship recomputed in the UI. Asset classes
-  with no v1 benchmark axis render an explicit "not benchmarked" line instead of an empty
-  comparison.
-- **Honest color semantics.** Macro deltas are direction-colored, never green/red, because
-  macro is context, not performance. Returns and ahead/behind labels *are* green/red,
-  because there the judgment is the point.
+  by asset class and attaches each ticker's `holdings_benchmarks` rows: master-detail on
+  one entity, not a relationship recomputed in the UI. Classes with no v1 benchmark axis
+  render an explicit "not benchmarked" line.
+- **Honest color semantics.** Macro deltas carry direction words, not green/red, because
+  macro is context. Returns and ahead/behind *are* green/red (`#1f6f3f` / `#b3362b`,
+  checked for colour-blind separation) with a sign and label, never colour alone.
+- Playwright covers the figure-to-focus resolver with unit tests and the built page with
+  browser tests at desktop and phone widths.
+
+**v1: Streamlit.** The serve layer started as a Streamlit dashboard with a data seam
+(`data.py`) that read live BigQuery locally and a committed parquet snapshot in the
+public deploy. It is frozen on the `streamlit-v1` branch and still live at
+[anchor-dashboard.streamlit.app](https://anchor-dashboard.streamlit.app) with its last
+demo data. The move to Next.js came when the scroll-told briefing outgrew Streamlit's
+rerun model and one static bundle could serve both worlds.
 
 **LLM briefing (`copilot_briefing`).** `app/generate_briefing.py` feeds the gold marts,
-the macro regime, and sourced headlines to a local Ollama model (default `gemma4:31b`) and
-writes one row per run into the active marts dataset: `briefing_json` (a hard-validated
-tour script with per-step targets and figures), `briefing_md` (assembled narration), and
-`sources` (the headlines fed to the prompt, kept as the audit trail). The provider seam
-structurally refuses to send the real portfolio to a cloud model. This table is outside
-dbt lineage, and it is the only served table whose absence the app tolerates (the sidebar
-falls back to deterministic lines). Design: `llm_copilot_briefing_design.md`,
+the macro regime, and sourced headlines to a model and writes one row per run into the
+active marts dataset: `briefing_json` (a hard-validated tour script with per-step targets
+and figures), `briefing_md` (assembled narration), and `sources` (the headlines, kept as
+the audit trail). A rejected script is regenerated up to 3 times with the validator's
+errors fed back. Providers: Claude (`claude-sonnet-5-5`) for the public demo only, and a
+local model (Qwen via llama-server) for the real portfolio; `build_provider` refuses a
+cloud provider for real data before any network call. The table is outside dbt lineage,
+and the site renders without it. Design: `llm_copilot_briefing_design.md`,
 `immersive_briefing_design.md`, `briefing_daily_note_design.md`.
-
-**Web tour (`web/`).** A Next.js static export that renders the briefing as six scroll
-scenes (macro → sectors → holdings) from a committed JSON bundle
-(`web/public/data/anchor.json`, produced by `app/export_web.py`). No backend, no
-credentials, demo portfolio only by construction. Playwright covers the figure-to-focus
-resolver with unit tests and the built page with a browser smoke test.
 
 ## Orchestration and CI
 
-**Dagster (`orchestration/`).** The whole pipeline as one software-defined asset graph via
-`dagster-dbt`: holdings, FRED, and yfinance ingestion assets feed the dbt models, which
-feed the parquet snapshot export. This is the artifact dbt docs can't produce on their
-own, because dbt's lineage stops at its own sources. Runs locally with `make dagster`;
-the unattended Dagster+ Serverless deploy is the next ops milestone.
+**Public refresh (`.github/workflows/public-refresh.yml`).** Tue-Sat 10:00 UTC, a thin
+trigger over `make` targets: ingest → `dbt build --target prod` → briefing (only for a
+new settled date) → export to a temp file → validate → web build + Playwright → one
+commit touching only the bundle → Vercel deploys. It authenticates as
+`anchor-public-refresh`, a service account with Data Editor on the public datasets and
+read access to `raw_holdings.holdings_demo` only; `scripts/check_public_credential.py`
+proves it is denied every private table. Runbook: `public_refresh_operations.md`.
 
-**CI (`.github/workflows/ci.yml`).** Every pull request runs pytest over the ingestion
-code, then `dbt build` (dbt-core 1.11) against an isolated `ci` target, then the web
-job (`npm run build`, typecheck, lint, Playwright smoke). The dbt docs site is generated
-locally as a static page (`site/index.html`) and deployed to GitHub Pages by `docs.yml`.
+**Private refresh (LaunchAgent).** Tue-Sat 06:00 ET on the owner's Mac:
+`scripts/private_daily.py` runs SnapTrade → FRED/yfinance → `prod-private` → local
+briefing → private bundle → private site, then swaps it in atomically. Runbook:
+`private_daily_operations.md`.
+
+**Why morning runs.** Yahoo can still serve blank closes at 21:30 ET (2026-11-10: 9
+bars), which the valuation guardrails correctly refuse. Ingestion drops the current day
+before the 21:30 ET cutoff, so a morning run settles the previous weekday.
+
+**Dagster (`orchestration/`, retired).** The pipeline was first one software-defined
+asset graph via `dagster-dbt`, with a Dagster+ Serverless deployment built. Once the
+serve layer became one static bundle, the job was a straight line of `make` targets, and
+a GitHub Actions trigger replaced it. The code stays as a record; nothing schedules it.
+
+**CI (`.github/workflows/ci.yml`).** Every pull request runs pytest, then `dbt build`
+(dbt-core 1.11) against an isolated `dbt_ci` dataset, then the web job (`npm run build`,
+typecheck, lint, Playwright). The dbt docs site is generated locally as a static page
+(`site/index.html`) and deployed to GitHub Pages by `docs.yml`.
+
+**Leak checks.** `scripts/audit_public_tables.py` checks every public dataset (including
+`dbt_ci`) for tickers outside the demo universe; `scripts/scan_for_private_tickers.py`
+scans files or git history for real holdings. Both print counts only.
 
 **dbt engines.** Local work uses dbt-fusion, run from inside `transformation/` because
 fusion's `--project-dir` flag mishandles seed paths. CI uses dbt-core on its own runner.

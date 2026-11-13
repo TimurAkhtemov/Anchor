@@ -26,3 +26,6 @@ __pycache__/
 
 # real portfolio inputs — never committed (see docs/make_it_real_design.md)
 data/private/
+
+# Superpowers plan/brainstorm workspaces (local only)
+.superpowers/

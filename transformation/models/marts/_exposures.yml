@@ -5,8 +5,7 @@ exposures:
     label: Anchor Web Dashboard
     type: dashboard
     maturity: medium
-    # Placeholder until go-live (Task 12 sets the deployed URL).
-    url: https://github.com/TimurAkhtemov/Anchor
+    url: https://anchor-pi-five.vercel.app
     description: >
       Public Anchor web app (Next.js static export). Renders the macro, sector,
       holdings, and trend marts from the committed web bundle

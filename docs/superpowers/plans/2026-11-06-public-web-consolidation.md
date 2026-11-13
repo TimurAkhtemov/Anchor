@@ -24,7 +24,7 @@
 - Run dbt from inside `transformation/`, never with `--project-dir` under fusion.
 - Ollama is shared with a meeting recorder: use only `qwen3.6:35b`, and load no other model.
 - Staleness threshold: 4 days. Settle cutoff: 21:30 ET.
-- **STOP gates:** steps marked 🛑 need Timur. Never run a destructive BigQuery action, a push, or a merge without his go-ahead at that step.
+- **STOP gates:** steps marked 🛑 need Timur. Never run a destructive BigQuery action, a push, or a merge without their go-ahead at that step.
 
 ## Review Focus
 
@@ -140,7 +140,7 @@ Everything after this depends on it.
 - [ ] **Step 3: Implement.** Case-insensitive word-boundary phrases: `will`, `won't`, `going to`, `expected to`, `likely to`, `poised to`, `set to`, `should|could|may` + `rise|fall|continue|benefit|help|provide`, `buy`, `sell` (not `sell-off`), `trim`, `recommend*`. Retry only on `ValidationError`, not on API errors.
 - [ ] **Step 4: Update `AnthropicProvider` per the skill.** Keep streaming and structured output, and set `output_config.effort` to `medium` alongside `format`. Remove the Opus 4.8 comments. Existing `is_local` and privacy tests must still pass.
 - [ ] **Step 5: Run the tests and commit.** `feat(briefing): enforce no predictions, retry once, support dry runs`.
-- [ ] **Step 6: 🛑 Bake-off.** Timur creates the Anthropic key, in its own Console workspace with a spend limit, and sets it in his shell only, never `.env`. Run with `ANCHOR_BRIEFING_PROVIDER=anthropic` and `--dry-run --out`, once each with `ANCHOR_BRIEFING_CLOUD_MODEL=claude-sonnet-5-5` and `claude-haiku-5-5`. Show Timur both narrations plus token usage and actual cost. He picks.
+- [ ] **Step 6: 🛑 Bake-off.** Timur creates the Anthropic key, in its own Console workspace with a spend limit, and sets it in their shell only, never `.env`. Run with `ANCHOR_BRIEFING_PROVIDER=anthropic` and `--dry-run --out`, once each with `ANCHOR_BRIEFING_CLOUD_MODEL=claude-sonnet-5-5` and `claude-haiku-5-5`. Show Timur both narrations plus token usage and actual cost. He picks.
 - [ ] **Step 7: Set the chosen default.** If Sonnet, add `fallbacks: "default"` with beta `server-side-fallback-2026-07-01` per the skill, and tell Timur. Haiku has no server-side fallback, so a refusal becomes a briefing failure. Commit.
 
 ### Task 6: Bundle export, validation, and dashboard selectors
@@ -303,7 +303,7 @@ Each 🛑 is Timur's call. Sequence matters: the private job must stop writing r
 - [ ] **Step 1: 🛑 PR and merge.** Push `feat/public-web`, open a PR, confirm CI is green, merge. Nightly private runs now use their own market tables. Warn Timur first: merging removes `app/app.py`, so the Streamlit link shows an error from here until he deletes that app, and steps 1–8 should happen in one sitting.
 - [ ] **Step 2: Fix the private model locally.** Change only the `ANCHOR_BRIEFING_MODEL` line in `.env` to `qwen3.6:35b`, without printing the file. Run `make bootstrap-private`, `make install-private-services`, `make refresh-private`. Expected: `make private-status` shows `success` or `degraded`, and `http://127.0.0.1:8501` shows the app labeled Private with current data. If SnapTrade, marts, or FRED fail, debug those separately.
 - [ ] **Step 3: Clean public tables, audit first.** Run `make ingest` so `raw_yfinance` is demo-only. Then write and run read-only `scripts/audit_public_tables.py`: scan every table in the public datasets for columns in `TICKER_COLUMNS`, and report tickers outside `allowed_tickers()` per table. Also write local-only `scripts/scan_for_private_tickers.py <paths or --git-history>`: it reads real tickers from `raw_holdings.holdings_real`, searches for whole-word matches outside `allowed_tickers()`, and reports counts and file paths, never the tickers themselves. Common-word tickers need care.
-- [ ] **Step 4: 🛑 Show Timur the audit.** On his go-ahead: `dbt build --select stg_yfinance__prices --full-refresh --target prod`, drop `anchor_snapshots.snap_yfinance_tickers`, `dbt snapshot --target prod`, `dbt build --target prod`. This resets the ticker metadata change history. Re-run the audit. Expected: no offenders.
+- [ ] **Step 4: 🛑 Show Timur the audit.** On their go-ahead: `dbt build --select stg_yfinance__prices --full-refresh --target prod`, drop `anchor_snapshots.snap_yfinance_tickers`, `dbt snapshot --target prod`, `dbt build --target prod`. This resets the ticker metadata change history. Re-run the audit. Expected: no offenders.
 - [ ] **Step 5: 🛑 Swap secrets.** Timur runs `gh secret set BQ_SA_KEY < <new key>` and `gh secret set ANTHROPIC_API_KEY`. Re-run CI on `main`. Expected: green, or adjust grants per the runbook.
 - [ ] **Step 6: Trial run.** `gh workflow run public-refresh.yml -f publish=false`. Expected: green. Save the log with `gh run view --log` under `var/` and run `scan_for_private_tickers.py` on it. Expected: no matches.
 - [ ] **Step 7: 🛑 Connect Vercel.** Timur imports the repo with root directory `web/` and the default address, and gives me the URL.

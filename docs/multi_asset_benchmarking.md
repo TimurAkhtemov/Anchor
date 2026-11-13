@@ -25,12 +25,12 @@ project rule: classification is live from yfinance and uses Yahoo's taxonomy.)_
 
 | Holding | Risk axes (marginals) | Benchmark instruments | Broad benchmark |
 |---|---|---|---|
-| Equity — single stock | sector × cap | SPDR sector ETFs; SPY/MDY/IWM | SPY / VTI |
-| Equity — thematic/sector ETF (QTUM, XLK held) | already a basket | (optional category axis) | **SPY** ("beat the index?") |
-| Equity — broad ETF (SPY/VTI held) | *is* the market | — (root; show return + trend) | — |
+| Equity — single stock | sector × cap | SPDR sector ETFs; SPY/MDY/IWM | SPY / VOO |
+| Equity — thematic/sector ETF (e.g. XLK held) | already a basket | (optional category axis) | **SPY** ("beat the index?") |
+| Equity — broad ETF (SPY/VOO held) | *is* the market | — (root; show return + trend) | — |
 | **Fixed income — bond / bond ETF** | **duration × credit** | duration: SHY/IEI/IEF/TLT · credit: GOVT/LQD/HYG/MUB/TIP | **AGG / BND** |
 | Commodity / alt (GLD, IBIT, REIT) | own category | — | vs category, or none |
-| Cash / money market (SGOV/BIL/cash) | — | — | risk-free / T-bill yield, or none |
+| Cash / money market (SPAXX/BIL/cash) | — | — | risk-free / T-bill yield, or none |
 
 ## The generic design still holds (no gold rewrite)
 

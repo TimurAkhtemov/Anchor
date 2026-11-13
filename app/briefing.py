@@ -50,7 +50,7 @@ DEFAULT_MAX_ATTEMPTS = 3
 # Deliberately a separate env var from ANCHOR_BRIEFING_MODEL, which stays pinned
 # to the Ollama model — sharing one var would send an Ollama model name to
 # Anthropic the moment the provider switched.
-DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5-5"  # provisional until the bake-off
+DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5-5"  # chosen in the 2026-11-06 Sonnet/Haiku bake-off
 
 # The numeric backbone: five served marts plus the shared trading calendar.
 CONTEXT_TABLES = [

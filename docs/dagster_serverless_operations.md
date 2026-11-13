@@ -1,5 +1,9 @@
 # Dagster+ Serverless operations
 
+> **Historical (retired 2026-11-06).** Dagster+ Serverless was built but never activated.
+> The public refresh now runs on GitHub Actions (`public_refresh_operations.md`) and the
+> private one on a LaunchAgent (`private_daily_operations.md`). Kept as a record.
+
 Anchor automates one settled weekday refresh at 21:30 America/New_York. It does not
 poll intraday prices, schedule real holdings, or access SnapTrade.
 

@@ -19,7 +19,7 @@ the `web/` tour has never been deployed, and the two surfaces have diverged in d
    feature below, plus the existing guided reading in the same design.
 3. The public demo refreshes itself every weekday through GitHub Actions and redeploys,
    with no action from Timur.
-4. The real portfolio runs on the same app on his Mac, with its data never leaving it.
+4. The real portfolio runs on the same app on their Mac, with its data never leaving it.
 
 ## Non-goals
 
@@ -120,7 +120,7 @@ would publish real tickers. Timur's decision is to separate them:
 - **One-time cleanup:** `stg_yfinance__prices` merges and never deletes, and the ticker
   snapshot keeps history, so the public datasets probably still hold real tickers. Query
   first to confirm. Purging means rebuilding those tables, which resets the snapshot's
-  change history. Show Timur what will be dropped and get his go-ahead before running it.
+  change history. Show Timur what will be dropped and get their go-ahead before running it.
 - **Local Dagster** calls this same ingestion, so it moves to the demo-only universe. This
   also makes true the claim in its docs that the code location has no real-holdings access.
 
@@ -235,7 +235,7 @@ demo, validated so it explains and never predicts).
 Yahoo data is scraped with no guarantee. GitHub can delay scheduled runs, and disables
 schedules after 60 days without repository activity, which a long outage could reach.
 So "never think about it again" really means: if it breaks, the site stays up, says how
-old its data is, and GitHub emails him.
+old its data is, and GitHub emails them.
 
 ## Left to the builder
 

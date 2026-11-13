@@ -1,4 +1,9 @@
-# orchestration/ — Dagster code location
+# orchestration/ — Dagster code location (retired)
+
+> **Retired 2026-11-06, kept as a record.** Once the serve layer became one static web
+> bundle, the pipeline was a straight line of `make` targets, so a GitHub Actions trigger
+> (public) and a macOS LaunchAgent (private) replaced Dagster. The graph below shows the
+> pre-retirement shape, ending in the Streamlit parquet snapshot. Nothing schedules it.
 
 The whole Anchor pipeline as **one software-defined asset graph**:
 

@@ -6,11 +6,12 @@ only on loopback. Real holdings stay private._
 
 Anchor has two deliberately separate operating paths:
 
-- **Public/demo:** the Dagster graph and GitHub Actions refresh, public marts, and the
-  committed web bundle behind the public site.
+- **Public/demo:** the GitHub Actions refresh, public marts, and the committed web
+  bundle behind the public site.
 - **Private/real:** a macOS user service that reads the user's SnapTrade Personal
-  connection, ingests FRED and its own yfinance prices for the private world
-  (`raw_yfinance_private`, not the public tables), builds only `prod-private`,
+  connection, refreshes FRED (`raw_fred` is shared by both worlds: macro series carry
+  nothing private) and its own yfinance prices (`raw_yfinance_private`, not the public
+  tables), builds only `prod-private`,
   generates the real briefing locally, and builds the same web app into gitignored
   `var/private_web`.
 

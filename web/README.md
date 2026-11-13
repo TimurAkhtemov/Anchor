@@ -1,10 +1,11 @@
-# Anchor — web tour surface
+# Anchor — web
 
-The immersive briefing front-end: the daily LLM briefing rendered as a
-scroll-told tour (macro → sectors → holdings) per
-`docs/immersive_briefing_design.md`. Next.js 16 static export — no backend, no
-credentials; the page renders the committed `public/data/anchor.json` bundle
-(demo portfolio only, by construction).
+The Anchor site: the "Morning paper" dashboard (briefing, macro → sectors →
+holdings) with a guided reading of the daily LLM briefing. Next.js 16 static
+export, no backend, no credentials. The public build renders the committed
+`public/data/anchor.json` (demo portfolio only, by construction) and is live at
+<https://anchor-pi-five.vercel.app> (Vercel, root directory `web/`). The private
+build renders a bundle in `var/` and is served on localhost only.
 
 ```bash
 npm run dev        # local dev server
